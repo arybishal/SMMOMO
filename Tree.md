@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 008)
+Last updated: 2026-09-23 (Task 009)
 
 ---
 
@@ -51,7 +51,7 @@ smmomo/
 │       │       ├── inbox/
 │       │       │   ├── page.tsx             Server page: header, empty state, comments+deliveries+automations+posts via lib/api → island
 │       │       │   └── inbox.tsx            Client island: activity list + detail panel, selection/search/outcome+post filters (not a route)
-│       │       ├── analytics/page.tsx       KPIs + CSS bar chart (no chart lib yet)
+│       │       ├── analytics/page.tsx       Server page: KPIs (Dashboard-consistent), 7-day CSS chart + text summary, automation/content performance tables, delivery breakdown + failure records (all via lib/api)
 │       │       └── settings/
 │       │           ├── page.tsx                   Settings hub (links to 3 sections)
 │       │           ├── account/page.tsx           Profile form (client; save disabled until auth)

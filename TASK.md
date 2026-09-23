@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 009 - Analytics
+Current Task: Task 010 - Settings
 
-Last Completed Task: Task 008 - Inbox
+Last Completed Task: Task 009 - Analytics
 
-Next Task: Task 009 - Analytics
+Next Task: Task 010 - Settings
 
-Last Updated: 2026-09-23 (Task 008)
+Last Updated: 2026-09-23 (Task 009)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -69,7 +69,7 @@ changed no database objects, migrations, or RLS.
 | 006 | Automation Builder | COMPLETE |
 | 007 | Posts + Supabase Foundation | COMPLETE |
 | 008 | Inbox | COMPLETE |
-| 009 | Analytics | NOT STARTED |
+| 009 | Analytics | COMPLETE |
 | 010 | Settings | NOT STARTED |
 | 011 | Backend Foundation | NOT STARTED |
 | 012 | Database | NOT STARTED |
@@ -93,46 +93,219 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 009 - Analytics
+## Task 010 - Settings
 
 Status: NOT STARTED
 
 ### Objective
 
-Refine `/analytics` from its Task 002/003 first-pass view into a finished V1
-surface — clearer KPI presentation, richer CSS chart, honest time context,
-text alternatives — using only existing `lib/api/analytics` data, no chart
-libraries, no fabricated fields.
+Refine the Settings surfaces (hub + account + social-accounts + usage)
+from their Task 002/003 first-pass state into finished V1 screens — deeper
+usage detail, consistent layout/copy, honest disabled states — using only
+existing `lib/api` data, no new deps, no fake backend behavior.
 
-### Requirements (derived from this file's note on Tasks 004–010 + current
+### Requirements (derived from this file's note on Tasks 004–10 + current
 repo state — confirm against the master prompt before starting)
 
-- Refine `app/(dashboard)/analytics/page.tsx` in place; reuse
-  `getAnalyticsSummary()` only — no new data layer, no fetch outside
-  `lib/api`.
-- Inspect the current page first (KPIs + CSS bar chart already exist) and
-  deepen rather than rebuild.
-- Likely additions if data supports them: KPI weighting/emphasis matching
-  Dashboard language, chart axis/legends, hover/focus affordances on bars,
-  empty + no-data states, an accessible text summary of the chart
-  (`AnalyticsSummary` has **no period field** — do not fabricate one;
-  UsageSummary's period lives at `/settings/usage`).
-- Keep any client-side state in a colocated island (Task 005/007/008
-  pattern); server page keeps loading through `lib/api`.
-- Accessibility: chart needs a readable text alternative; labels/badges
-  never color-only; filters (if added) get `aria-pressed` + labels.
+- Inspect all four routes first (`/settings`,
+  `/settings/account`, `/settings/social-accounts`, `/settings/usage`)
+  and deepen rather than rebuild.
+- Preserve honest disabled states: account Save stays disabled until
+  auth (Task 013); Instagram Connect stays disabled until Meta OAuth
+  (Task 015) — do **not** fake either flow.
+- Usage page: expand on the existing `UsageSummary` contract only
+  (`period`, `dmsSent`, `commentsProcessed`, `publicReplies`,
+  `failedDeliveries`) — no fabricated quotas/limits/percentages not in
+  the model.
+- Keep client state in a colocated island if needed (established pattern);
+  server pages keep loading through `lib/api`.
+- Accessibility: labeled fields, headings, text-not-color-only states.
 - Tokens/primitives only; no new deps; mock-only; do not touch unrelated
-  routes; no fake export/schedule actions.
+  routes.
 
 ### Notes
 
-- Dashboard shows the same `getAnalyticsSummary()` KPIs — keep number
-  language consistent across both surfaces.
-- Chart must stay CSS-only (no chart package — design-system rule).
+- Dashboard's usage strip links here (`Details` → `/settings/usage`) —
+  keep terminology consistent (DMs sent / public replies / failed).
+- Social-accounts page already renders a real `SocialAccount` mock
+  (connected badge, username, followers, connected-since).
 
 ---
 
 # Completed Tasks
+
+## Task 009 - Analytics
+
+Status: COMPLETE
+
+Completed:
+
+- `/analytics` rewritten from the Task 002/003 first-pass (4 KPIs + bare
+  7-day bar chart) into a full performance surface: server page loads
+  `getAnalyticsSummary()` + `listAutomations()` + `listPosts()` +
+  `listRecentComments()` + `listRecentDeliveries()` in one `Promise.all`
+  (all through `lib/api` — no mock/fetch/Supabase imports in the page,
+  grep-verified), renders `PageHeader` ("Analytics" / spec copy), then:
+- **KPI row (4)** — same metrics, wording, and styling as Dashboard for
+  cross-page consistency: Comments matched (emphasis card), DMs sent,
+  Failed deliveries (danger + "Needs attention" only when > 0), Active
+  automations `2 / 4`. All values come straight from the
+  `AnalyticsSummary` contract — no invented metrics.
+- **Daily activity card** — the existing CSS bar chart kept (no chart
+  library; documented indigo data-viz raw values), now with: `Last 7
+  days` Badge (period context — the only period supported: `daily[]`
+  carries exactly 7 labeled days and **sums exactly** to the KPIs
+  Σcomments=619=`commentsMatched`, Σdms=611=`dmsSent`), bars marked
+  `aria-hidden` (hover `title`s kept), text legend with color swatches +
+  labels, and a **generated textual summary** (equivalent accessible
+  description per spec §14): range `68 (Wed)`–`112 (Thu)`, totals 619 /
+  611 — all derived from `daily[]` at render time.
+- **Automation performance table** (real `<table>`, `th scope="col"`,
+  right-aligned tabular numerics): rows sorted by matched desc (readability
+  only — no winner language, no grades, no scores); each row = name →
+  detail `Link`, status Badge (same tone map as Automations list), keyword
+  chip, then the model's own counters: `matchedCount` / `dmSentCount` /
+  `failedCount` (failed in `text-danger` when > 0 — number always present,
+  never color-alone). Empty state when 0 automations.
+- **Content performance table** (real `<table>`): per-post rows via real
+  `postId` joins — Comments = `post.commentsCount`, Matched/DMs sent =
+  summed `matchedCount`/`dmSentCount` of automations linked by `postId`
+  (e.g. post_4: 251 comments, 0 matched/0 DMs — draft automation, honest
+  zeros). Post cell = type Badge + truncated caption. Empty state when 0
+  posts.
+- **Delivery breakdown card** (scoped "Recent records" — event layer, not
+  the 611-scale summary, following Dashboard's aggregate-vs-recent
+  precedent): hero **success rate `60%`** = delivered ÷ attempted where
+  **attempted = sent + delivered + failed (queued explicitly excluded —
+  never silently successful)** → 3 ÷ 5 with the 6 mock records; all four
+  model statuses listed with Badge + count (Queued 1 / Sent 1 / Delivered 3
+  / Failed 1 — "sent" kept distinct from "delivered" per spec §9);
+  caption spells out both definitions and the record scope. **Zero-guard:
+  0 records → "No delivery records yet"; all-queued → "No delivery
+  attempts yet — N queued" — never NaN/Infinity/misleading 0%.**
+- **Failed deliveries card** (scoped "Recent records"): one row per
+  failed event record — Failed Badge, joined automation name
+  (`automationName` via `commentId`, "Automation unknown" fallback),
+  `<time dateTime>` absolute timestamp, the model's own user-facing
+  `error` string ("Meta API: recipient cannot receive messages (24h
+  window).") — **no stack traces, no invented errors** — plus comment
+  context (`@username` — comment text · post caption). Compact neutral
+  empty state ("No failed deliveries in recent activity.") when none.
+- **No period filter / no search** (spec §5, §11): only 7 days of
+  timestamps exist — filtering would claim history the data doesn't
+  have; static "Last 7 days" Badge on the chart is the honest period
+  context. No management-table behavior added.
+- **Empty states everywhere** (compile-verified branches): no activity in
+  7 days, no delivery records, no attempts, no automations, no posts, no
+  failures — compact text-only, consistent with Dashboard/Inbox.
+- **Math safety**: `successRate` null unless `attempted > 0`; `maxBar`
+  floored at 1 (no div-by-zero in bar heights); every displayed
+  percentage/count derived at render time from loaded arrays — zero
+  hard-coded percentages, zero random numbers, zero fabricated chart
+  points (chart uses only `daily[]`).
+- **No future functionality** (spec §19): no realtime, no Meta Insights,
+  no sync, no aggregation jobs, no exports, no scheduled/AI reports. No
+  Supabase changes (spec §18). No shared components modified —
+  Dashboard/Inbox/Builder/Posts untouched (regression-verified).
+
+What it does:
+
+`/analytics` now answers "how are my automations performing?" from four
+angles — account KPIs (consistent with Dashboard), 7-day trend (chart +
+text summary), per-automation and per-post breakdowns (model counters via
+real joins), and delivery health (status split + mathematically-honest
+success rate + failure forensics) — every number traceable to an existing
+contract, with the aggregate layer and recent-event layer each explicitly
+scoped. Pure server component; architecture unchanged
+(UI → lib/api → mock); zero new dependencies.
+
+Files (key):
+
+- apps/web/app/(dashboard)/analytics/page.tsx (rewritten in place — the
+  only code file changed)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- None. Consumed existing `getAnalyticsSummary()`, `listAutomations()`,
+  `listPosts()`, `listRecentComments()`, `listRecentDeliveries()` — no new
+  endpoints, types, fields, or mock objects; calculations that span
+  multiple resources live in the page (Dashboard precedent); the API layer
+  stays a pure data seam.
+
+Error & loading handling:
+
+- No try/catch (convention — failures throw to Next's error page); no
+  `loading.tsx` (mocks resolve instantly); async `Promise.all` structure
+  drops in a real API without UI changes.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (16 routes; `/analytics` remains static ○).
+- Dev-server route sweep — 17/17 (incl. 404 cases unchanged).
+- `/analytics` HTML assertions (all pass after correcting assertion
+  false-negatives from React `<!-- -->` text-node separators and RSC
+  payload double-counting): spec description; all 4 KPI labels + values
+  (619 / 611 / 8 + "Needs attention" / `2 / 4`); emphasis card class;
+  chart title + `Last 7 days` Badge; 7 day labels + 14 indigo bars; legend
+  text; generated summary (`68 (Wed)`–`112 (Thu)`, totals 619/611);
+  `aria-hidden` bars; table `th scope="col"` headers; 4 automation names +
+  detail hrefs; counters (341/337/4, 184, 94/90, zeros); active/paused/
+  draft badges; keyword chips; matched-desc sort order; delivery card +
+  scope label; **60% rate (node-aware `60<!-- -->%`)** + `3 of 5 attempted
+  delivered` + all 4 status badges + formula caption + `6 recent delivery
+  records` scope; content table + captions + type badges + commentCounts
+  (342/187/96/251) + matched column; failed card + model error string +
+  `sana.studio` context + `Launch Link` join + `<time dateTime>`; no
+  Export/CSV/Subscribe/Schedule controls; **zero `aria-pressed`** (no
+  period filter); responsive grids (`sm:grid-cols-2`, `lg:grid-cols-4`,
+  2× `lg:grid-cols-2`); no `NaN`/`Infinity`/`undefined` in output.
+- Architecture greps: 0 `lib/mock` / `fetch(` / `supabase` references in
+  the page; exactly 4 `lib/api` imports; all 6 empty-state branches +
+  both zero-guards present in source.
+- Regression (all PASS): Dashboard KPIs/usage/activity/deliveries
+  (node-aware checks); Inbox two-panel + filters + detail sections;
+  Builder Save disabled-invalid; Posts ×4 create-automation hrefs;
+  Automations filters. Dev log: zero runtime errors.
+- Responsive: structural verification only (classes in served HTML). No
+  browser automation in this environment — no click-through claims.
+
+Known limitations:
+
+- The two mock layers have different scales by design: `AnalyticsSummary`
+  aggregates (619/611/8) vs recent event records (6 comments / 6
+  deliveries). Sections derived from each are explicitly scope-labeled
+  ("Recent records"); Dashboard already established this pattern.
+- Success rate (60%) reflects only the 6 recent records — not the
+  611-scale summary (the summary contract has no queued/sent/delivered
+  split, so a summary-level rate cannot be computed honestly).
+- Per-automation "successful/delivered" counts omitted — the `Automation`
+  model has only `dmSentCount`/`failedCount`, no delivered field.
+- "Comments received" KPI omitted — `AnalyticsSummary` has no such field;
+  `post.commentsCount` is a lifetime Instagram count (different period
+  than the 7-day KPIs) and would be misleading in the KPI row. Shown per
+  post in Content performance instead.
+- "DMs delivered" KPI omitted — not in the summary contract; delivered
+  count lives in the event-scoped Delivery breakdown.
+- `publicReplies` (198) unused on this page — not in spec's KPI list;
+  still surfaced on Dashboard usage strip + `/settings/usage`.
+- Period filter, empty-state branches, and all interactions are
+  compile-verified only (mocks populated; no browser tooling).
+- Automation/content counters carry no explicit period field — presented
+  without a period claim (only the `daily[]` chart claims "Last 7 days",
+  which its 7 labeled points support).
+
+Deferred backend functionality:
+
+- Real analytics aggregation, Meta Insights API, realtime updates,
+  historical periods beyond 7 days, exports, scheduled reports (future
+  tasks; same `AnalyticsSummary` contract can back them).
+
+Next:
+
+Task 010 - Settings
 
 ## Task 008 - Inbox
 
