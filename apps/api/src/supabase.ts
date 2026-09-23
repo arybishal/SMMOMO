@@ -125,8 +125,15 @@ export async function rest<T>(
     }
     return { status: res.status, data: null, errorCode };
   }
-  const data = (await res.json()) as T;
-  return { status: res.status, data, errorCode: null };
+  // 204 / empty body (DELETE without Prefer: return) — no JSON to parse.
+  if (res.status === 204) {
+    return { status: res.status, data: null, errorCode: null };
+  }
+  const text = await res.text();
+  if (!text) {
+    return { status: res.status, data: null, errorCode: null };
+  }
+  return { status: res.status, data: JSON.parse(text) as T, errorCode: null };
 }
 
 // Idempotent first-run workspace + owner membership (migration 014 RPC).

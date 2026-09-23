@@ -6,6 +6,7 @@ import {
   requireUser,
   rest,
 } from "./supabase";
+import { registerMetaRoutes } from "./meta";
 
 // Keep aligned with apps/api/package.json "version" when bumping.
 const SERVICE = "smmomo-api";
@@ -129,9 +130,14 @@ export async function buildApp() {
 
   // Every product route: resolve the cookie session, then ensure the caller
   // has a workspace (idempotent bootstrap — RLS reads still gate all rows).
+  // Exceptions: /health (public); Instagram OAuth callback (auth handled
+  // inline so an expired session mid-redirect becomes a login URL, not 401).
   app.addHook("preHandler", async (req, reply) => {
     const path = req.url.split("?")[0];
     if (req.method === "GET" && path === "/health") return;
+    if (req.method === "GET" && path === "/social-accounts/instagram/callback") {
+      return;
+    }
     const user = await requireUser(req, reply);
     if (!user) return reply;
     try {
@@ -360,7 +366,8 @@ export async function buildApp() {
   app.get("/social-accounts", async (req) => {
     const result = await rest<SocialAccountRow[]>(
       authed(req),
-      "social_accounts?select=*&order=connected_at.desc",
+      // Explicit columns: access_token/ig_user_id stay API-side only.
+      "social_accounts?select=id,platform,username,name,followers,status,connected_at&order=connected_at.desc",
     );
     if (result.status >= 400) {
       throw Object.assign(new Error("failed to load social accounts"), {
@@ -373,7 +380,7 @@ export async function buildApp() {
   app.get("/social-accounts/instagram", async (req, reply) => {
     const result = await rest<SocialAccountRow[]>(
       authed(req),
-      "social_accounts?select=*&platform=eq.instagram&limit=1",
+      "social_accounts?select=id,platform,username,name,followers,status,connected_at&platform=eq.instagram&limit=1",
     );
     const row = result.data?.[0];
     if (result.status >= 400 || !row) {
@@ -437,6 +444,9 @@ export async function buildApp() {
   app.get("/comments/recent", async () => []);
 
   app.get("/deliveries/recent", async () => []);
+
+  // Meta/Instagram OAuth connect + callback + disconnect (Task 015).
+  registerMetaRoutes(app);
 
   return app;
 }

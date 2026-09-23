@@ -2,8 +2,8 @@ import { getInstagramAccount } from "@/lib/api/social-accounts";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { IconInstagram } from "@/components/layout/icons";
+import { ConnectInstagram, DisconnectInstagram } from "./actions";
 
 function formatConnectedDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -13,9 +13,25 @@ function formatConnectedDate(iso: string) {
   });
 }
 
-export default async function SocialAccountsPage() {
+// OAuth round-trip lands here with ?oauth=… from apps/api (meta.ts).
+const OAUTH_NOTICES: Record<string, string> = {
+  connected: "Instagram connected.",
+  denied: "Meta authorization was cancelled.",
+  invalid_state: "Connection session expired — try Connect again.",
+  failed: "Could not complete the connection — check API logs.",
+  not_configured:
+    "Meta OAuth is not configured on the API (set META_APP_ID and META_APP_SECRET).",
+};
+
+export default async function SocialAccountsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ oauth?: string }>;
+}) {
+  const { oauth } = await searchParams;
   const account = await getInstagramAccount();
   const connected = account?.status === "connected";
+  const notice = oauth ? OAUTH_NOTICES[oauth] : undefined;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -23,6 +39,15 @@ export default async function SocialAccountsPage() {
         title="Social accounts"
         description="Platforms connected to SMMOMO."
       />
+
+      {notice && (
+        <p
+          role={oauth === "connected" ? "status" : "alert"}
+          className="mb-4 rounded-card border border-border bg-surface-muted px-4 py-3 text-sm text-foreground"
+        >
+          {notice}
+        </p>
+      )}
 
       <Card
         className={`flex items-center gap-4 p-5 ${
@@ -49,7 +74,7 @@ export default async function SocialAccountsPage() {
                 ? `${account.followers.toLocaleString()} followers · connected ${formatConnectedDate(
                     account.connectedAt,
                   )}`
-                : "Needs attention — reconnect once Instagram login ships (Task 015)."}
+                : "Needs attention — reconnect to restore the connection."}
           </p>
         </div>
         <Badge tone={connected ? "success" : "failed"}>
@@ -60,15 +85,15 @@ export default async function SocialAccountsPage() {
       <div className="mt-4 flex items-center justify-between gap-3 rounded-card border border-dashed border-zinc-300 bg-surface-muted p-4">
         <div>
           <p className="text-sm font-medium text-zinc-700">
-            Add another account
+            {account ? "Reconnect Instagram" : "Connect Instagram"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Meta OAuth arrives with Task 015 — no fake connect flow yet.
+            {account
+              ? "Runs the Meta OAuth flow again and replaces the stored connection."
+              : "Authorize via Meta OAuth — one professional account per workspace."}
           </p>
         </div>
-        <Button variant="secondary" disabled>
-          Connect
-        </Button>
+        <ConnectInstagram />
       </div>
 
       {account && (
@@ -78,12 +103,11 @@ export default async function SocialAccountsPage() {
               Disconnect {account.username}
             </p>
             <p className="text-xs text-muted-foreground">
-              Disconnecting ships with Meta OAuth (Task 015).
+              Removes the connection and stored access token from this
+              workspace.
             </p>
           </div>
-          <Button variant="secondary" disabled>
-            Disconnect
-          </Button>
+          <DisconnectInstagram username={account.username} />
         </div>
       )}
     </div>

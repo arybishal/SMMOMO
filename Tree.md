@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 014)
+Last updated: 2026-09-23 (Task 015)
 
 ---
 
@@ -21,8 +21,9 @@ smmomo/
 │   │   ├── package.json      Workspace "api": dev/build/start/typecheck
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   └── src/
-│   │       ├── app.ts        buildApp(): CORS (credentials) + auth preHandler + GET /health + posts/automations/social-accounts/analytics/usage/comments/deliveries routes
-│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user; ensureWorkspace() RPC
+│   │       ├── app.ts        buildApp(): CORS (credentials) + auth preHandler + GET /health + product routes + registerMetaRoutes
+│   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert
+│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace() RPC
 │   │       └── server.ts     Listen on PORT (default 4000)
 │   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
@@ -66,7 +67,8 @@ smmomo/
 │       │           ├── page.tsx                   Async hub: live lib/api summaries per row (account state, period·DMs)
 │       │           ├── account/page.tsx           Server page: session getUser → email + name (redirect /login if none)
 │       │           ├── account/account-form.tsx   Client island: Name, Email (readOnly), optional password change → updateUser; Save enabled
-│       │           ├── social-accounts/page.tsx   Instagram 3-state card (connected/error/missing) + Connect/Disconnect disabled (Task 015)
+│       │           ├── social-accounts/page.tsx   Instagram card + OAuth ?oauth= notices + live Connect/Disconnect (Task 015)
+│       │           ├── social-accounts/actions.tsx  Client islands: ConnectInstagram link + DisconnectInstagram (DELETE + connection-changed event)
 │       │           └── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
 │       │
 │       ├── components/
@@ -87,7 +89,7 @@ smmomo/
 │       │   │   ├── client.ts           request() seam: USE_MOCK=false → fetch(API_BASE); options (method/body); 404→undefined; server-side cookie forward (next/headers)
 │       │   │   ├── automations.ts      listAutomations, getAutomation, createAutomation, updateAutomation
 │       │   │   ├── posts.ts            listPosts, getPost (plain API seam — dual path removed)
-│       │   │   ├── social-accounts.ts  listSocialAccounts, getInstagramAccount
+│       │   │   ├── social-accounts.ts  listSocialAccounts, getInstagramAccount, instagramConnectHref, disconnectInstagram
 │       │   │   ├── analytics.ts        getAnalyticsSummary
 │       │   │   ├── usage.ts            getUsageSummary
 │       │   │   └── inbox.ts            listRecentComments, listRecentDeliveries
@@ -113,7 +115,8 @@ smmomo/
 │   ├── .gitignore           CLI ignores (.branches, .temp, .env.local…)
 │   └── migrations/
 │       ├── 20260923120000_smmomo_foundation.sql  workspaces → members/social_accounts → posts → automations + membership RLS (APPLIED 2026-09-23 via supabase db push; local == remote)
-│       └── 20260923170000_bootstrap_and_automation_writes.sql  bootstrap_workspace() RPC + member INSERT/UPDATE on automations (APPLIED 2026-09-23 via supabase db push)
+│       ├── 20260923170000_bootstrap_and_automation_writes.sql  bootstrap_workspace() RPC + member INSERT/UPDATE on automations (APPLIED 2026-09-23 via supabase db push)
+│       └── 20260923180000_social_account_oauth_writes.sql  social_accounts token columns + member INSERT/UPDATE/DELETE (APPLIED 2026-09-23 via supabase db push)
 │
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
@@ -144,6 +147,7 @@ smmomo/
   + product routes (posts, automations CRUD, social-accounts, analytics/usage summaries,
   comments/deliveries empty lists). `apps/api/src/supabase.ts` → cookie parse + user
   verification + PostgREST helper + bootstrap_workspace RPC.
+  `apps/api/src/meta.ts` → Instagram OAuth connect/callback/disconnect (Task 015).
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`

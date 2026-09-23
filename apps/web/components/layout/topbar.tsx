@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconMenu } from "./icons";
 import { getBrowserSupabase } from "@/lib/supabase/client";
+import { getInstagramAccount } from "@/lib/api/social-accounts";
 
 function initialsOf(name: string | null, email: string | null): string {
   const source = (name ?? email ?? "").trim();
@@ -17,6 +18,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
   const [name, setName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [igConnected, setIgConnected] = useState(false);
 
   useEffect(() => {
     const supabase = getBrowserSupabase();
@@ -31,7 +33,22 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       setName(((user?.user_metadata?.name as string | undefined) ?? null));
       setEmail(user?.email ?? null);
     });
-    return () => subscription.unsubscribe();
+    getInstagramAccount()
+      .then((account) => setIgConnected(account?.status === "connected"))
+      .catch(() => setIgConnected(false));
+    const onConnectionChanged = () => {
+      getInstagramAccount()
+        .then((account) => setIgConnected(account?.status === "connected"))
+        .catch(() => setIgConnected(false));
+    };
+    window.addEventListener("smmomo:connection-changed", onConnectionChanged);
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener(
+        "smmomo:connection-changed",
+        onConnectionChanged,
+      );
+    };
   }, []);
 
   async function signOut() {
@@ -56,11 +73,13 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       <div className="flex-1" />
 
       {/* Connection pill — same semantic construction as Badge tone="success".
-          Static until Meta OAuth (Task 015). */}
-      <span className="hidden items-center gap-2 rounded-pill bg-success-soft px-3 py-1 text-xs font-medium text-success-strong ring-1 ring-inset ring-success/20 sm:inline-flex">
-        <span className="h-1.5 w-1.5 rounded-pill bg-success" />
-        Instagram connected
-      </span>
+          Shows only when the workspace actually has a connected account. */}
+      {igConnected && (
+        <span className="hidden items-center gap-2 rounded-pill bg-success-soft px-3 py-1 text-xs font-medium text-success-strong ring-1 ring-inset ring-success/20 sm:inline-flex">
+          <span className="h-1.5 w-1.5 rounded-pill bg-success" />
+          Instagram connected
+        </span>
+      )}
 
       {initials && (
         <span

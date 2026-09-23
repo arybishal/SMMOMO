@@ -6,24 +6,24 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 015 - Meta OAuth
+Current Task: Task 016 - Meta Webhooks
 
-Last Completed Task: Task 014 - API Integration
+Last Completed Task: Task 015 - Meta OAuth
 
-Next Task: Task 015 - Meta OAuth
+Next Task: Task 016 - Meta Webhooks
 
-Last Updated: 2026-09-23 (Task 014)
+Last Updated: 2026-09-23 (Task 015)
 
-Verification: 2026-09-23 Task 014 validation PASSED — typecheck/lint/
-build/build:api exit 0 (dashboard routes `ƒ` force-dynamic); migration
-`20260923170000` applied via `supabase db push`; API anon/bogus cookie
-401, CORS preflight ACAO+ACAC, cookie sweep 10 routes correct shapes
-(honest empties + 404s), bootstrap idempotent (1 workspace + 1 owner
-membership), POST/PATCH error paths 400/404; web 12/12 authenticated
-routes 200 (unknown automation 404) with honest empty-state assertions
-21/21; no-cookie + bogus-cookie redirects unchanged; fresh page hits add
-0 new API failures; no secret key in app code; servers stopped after
-validation.
+Verification: 2026-09-23 Task 015 validation PASSED — typecheck/lint/
+build/build:api exit 0; migration `20260923180000` applied via
+`supabase db push`; connect/callback honest redirects (not_configured
+without META creds, anon connect 401), forged state rejected, DELETE
+disconnect 200 (empty + after seed), member INSERT/DELETE policies
+proven live with token **not** leaked through API GET; web social-
+accounts Connect anchor + OAuth notices + no gated Task 015 copy;
+topbar pill gated on real `igConnected`; no-cookie redirects unchanged;
+9 authenticated routes 200; 0 new log errors; 0 secrets in source;
+servers stopped after validation.
 
 Audit: 2026-09-23 read-only Supabase architecture audit PASSED — schema
 designed in `supabase/migrations/20260923120000_smmomo_foundation.sql`
@@ -79,7 +79,7 @@ blocking anon); see the Task 012 record below.
 | 012 | Database | COMPLETE |
 | 013 | Authentication | COMPLETE |
 | 014 | API Integration | COMPLETE |
-| 015 | Meta OAuth | NOT STARTED |
+| 015 | Meta OAuth | COMPLETE |
 | 016 | Meta Webhooks | NOT STARTED |
 | 017 | Automation Engine | NOT STARTED |
 | 018 | BullMQ Delivery | NOT STARTED |
@@ -97,48 +97,155 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 015 - Meta OAuth
+## Task 016 - Meta Webhooks
 
 Status: NOT STARTED
 
 ### Objective
 
-Connect a real Instagram Professional account via Meta OAuth so the
-Connect/Disconnect affordances (social-accounts settings, topbar pill,
-posts empty state) become live instead of Task 010's honest disabled
-copy — with tokens stored for later webhook/engine work (016–018).
+Receive Meta/Instagram webhook events (comments, messages) so the
+automation engine (017+) can react in real time — verify handshake,
+persist events honestly, never trust unverified payloads.
 
 ### Requirements (derived from the roadmap + deferral notes in Tasks
-007/010/014 — confirm against the master prompt before starting)
+014/015 — confirm against the master prompt before starting)
 
-- Meta app + OAuth code flow for Instagram Business/Creator (scopes
-  for basic profile + content; long-lived token exchange + refresh as
-  Meta requires). App id/secret live in API env only — never in
-  `apps/web` and never committed.
-- Persist connection on `social_accounts` (RLS member-scoped): upsert
-  on success, honest status (`connected` / needs attention), real
-  username/followers if the graph returns them.
-- Wire Connect/Disconnect: settings social-accounts buttons, topbar
-  Instagram pill, posts-page empty state — remove Task 010/014 gated
-  copy once live; Disconnect clears the row (and revokes if Meta
-  supports it without extra scope).
-- API routes for connect start (redirect/URL) + callback + disconnect
-  matching whatever UI shape is chosen; web only through the
-  `lib/api` seam (no direct fetch to Meta from the browser).
-- Validation: typecheck/lint/build, routes, no secrets in repo/web
-  bundle, connection row behaves under RLS, regressions.
+- Webhook verify handshake (`GET` hub.challenge + `META_WEBHOOK_
+  VERIFY_TOKEN` check) + signature validation on POST (app secret /
+  Meta signature header per current docs).
+- Subscribe relevant Instagram/webhook topics once a professional
+  account is connected (comments, messages/messaging_postbacks as the
+  product needs).
+- Land events into tables that Tasks 016+ own (`comments`/
+  `deliveries` or a dedicated events table — decide + migrate honestly;
+  do not invent fake rows). RLS membership scoping continues.
+- Idempotent handling (duplicate deliveries), honest 2xx only after
+  durable accept, structured logs.
+- Validation: typecheck/lint/build, handshake curl tests (good/bad
+  token), no secrets in web app, regressions on existing routes.
 
 ### Notes
 
-- `posts` sync / media import beyond what the connection returns is
-  016+ unless the master prompt says otherwise.
-- No fake OAuth: if Meta app credentials are unavailable in this
-  environment, document the blocker and ship the real code path
-  against env vars the operator supplies — never simulate success.
+- Engine consumption (keyword match → queue DM) is Task 017+; 016 is
+  receive + persist + verify only unless the master prompt says more.
+- No Meta app in this environment → handshake/signature code ships
+  against env vars; document any operator-supplied credential gap.
 
 ---
 
 # Completed Tasks
+
+## Task 015 - Meta OAuth
+
+Status: COMPLETE
+
+Completed:
+
+- **Migration `20260923180000_social_account_oauth_writes.sql`
+  APPLIED** (`supabase db push`): `social_accounts.access_token` +
+  `ig_user_id` + `token_expires_at` (token is API-only — never
+  selected into web responses) + membership INSERT/UPDATE/DELETE
+  policies (the foundation migration's deferred write policies for
+  this table).
+- **`apps/api/src/meta.ts`** — Instagram API with Instagram Login
+  OAuth code flow: `GET /social-accounts/instagram/connect` (302 to
+  `instagram.com/oauth/authorize` with HMAC-bound `state`;
+  unconfigured → web `?oauth=not_configured`, not a JSON 500),
+  `GET …/callback` (inline auth so expired session mid-redirect →
+  login URL; verify state vs session user; exchange code →
+  `api.instagram.com/oauth/access_token` → profile via
+  `graph.instagram.com/me`; upsert connection; redirect
+  `?oauth=connected|denied|invalid_state|failed`),
+  `DELETE /social-accounts/instagram` (RLS-scoped remove + token).
+  Callback exempted from the blanket preHandler (auth handled inline).
+  App id/secret + redirect URI from API env only.
+- **`app.ts`** — `registerMetaRoutes(app)`; social GET selects
+  explicit columns (**no** `access_token`/`ig_user_id` in responses).
+- **Web seam** — `social-accounts.ts` gained `instagramConnectHref()`
+  (absolute API URL for full-page OAuth nav — cookies are host-scoped)
+  + `disconnectInstagram()` DELETE; `actions.tsx` islands:
+  `ConnectInstagram` (plain `<a>`), `DisconnectInstagram` (DELETE →
+  `smmomo:connection-changed` event + `router.refresh()`).
+- **Settings social-accounts page** — OAuth `?oauth=` notices
+  (connected/denied/invalid_state/failed/not_configured), live Connect
+  (reconnect copy when a row exists), Disconnect island with pending
+  + `role="alert"` error; Task 010's disabled "Meta OAuth arrives"
+  copy **removed**.
+- **Topbar pill** — no longer hardcoded "Instagram connected";
+  fetches `getInstagramAccount()` and renders only when
+  `status === "connected"`; re-fetches on
+  `smmomo:connection-changed`.
+- **`.env.example`** — Meta section documents Task 015 vars
+  (`META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`) as API-env
+  only; webhook token still reserved for 016. README env table
+  statuses updated.
+
+Validation:
+
+- `npm run typecheck` (api+web), `npm run lint`, `npm run build`,
+  `npm run build:api` — all exit 0 (final re-run after the 204-body
+  fix in `rest()`).
+- Migration: `npx supabase db push` → "Finished supabase db push"
+  listing exactly `20260923180000_social_account_oauth_writes.sql`.
+- API (no META creds in env — honest path): cookie `GET /connect` →
+  **302** `…/settings/social-accounts?oauth=not_configured`; anon
+  `/connect` → **401**; callback (no code / forged state) → 302
+  `not_configured` (config gate first); `DELETE` (no row) → **200
+  `{"ok":true}`** (PostgREST 204 handled); anon DELETE/GET → 401;
+  GET instagram → 404 when unconnected.
+- **RLS write proof**: seeded a row as the user via PostgREST
+  (member INSERT policy) with `access_token=SECRET_SHOULD_NOT_LEAK`;
+  API GET returned the mapped shape **without** the token
+  (`leaks SECRET: False`); API DELETE removed it; final REST count
+  `[]`. (UI Disconnect path is the same DELETE + event.)
+- Web with cookie: Connect `<a href="http://localhost:4000/social-
+  accounts/instagram/connect">` present; notices render
+  (`connected` / `not_configured` / `invalid_state`); old gated copy
+  absent; settings hub still honest (`No Instagram account
+  connected.`); no Disconnect section while unconnected.
+- Status sweep with cookie: 9 protected routes **200**;
+  `/login`,`/register` → 307 `/dashboard`; landing 200. No-cookie:
+  `/dashboard` + `/settings/social-accounts` → 307 `/login?next=…`;
+  login/register/landing 200.
+- Logs: 0 recent web `⨯`/API-request-failed; API level 40/50 = 0.
+- Secret scan: 0 `sb_secret_…` patterns; META secret only via
+  `process.env`; `.env*` still gitignored; git status clean of env
+  files.
+- No browser automation and **no live Meta app credentials in this
+  environment** — the authorize URL / token exchange / profile fetch
+  are implemented against the documented endpoints but not E2E'd
+  against Instagram; unconfigured + state + RLS paths fully HTTP-
+  tested. Servers stopped (3000/4000 free) after validation.
+
+Files:
+
+- supabase/migrations/20260923180000_social_account_oauth_writes.sql (new, applied)
+- apps/api/src/meta.ts (new — OAuth connect/callback/disconnect + state HMAC)
+- apps/api/src/app.ts (registerMetaRoutes, callback preHandler skip, explicit social selects)
+- apps/api/src/supabase.ts (rest(): handle 204/empty bodies)
+- apps/web/lib/api/social-accounts.ts (connect href + disconnectInstagram)
+- apps/web/app/(dashboard)/settings/social-accounts/page.tsx (notices + live CTAs)
+- apps/web/app/(dashboard)/settings/social-accounts/actions.tsx (new islands)
+- apps/web/components/layout/topbar.tsx (real connection pill)
+- .env.example, README.md (Meta env docs)
+- TASK.md, Tree.md (this record)
+
+Notes:
+
+- Operator setup for a live connect: create an **Instagram API with
+  Instagram Login** app, set `META_APP_ID`/`META_APP_SECRET`/
+  `META_REDIRECT_URI` on **apps/api only**, add the redirect URI to
+  the app's Valid OAuth Redirect URIs. Without those env vars the UI
+  honestly reports `not_configured` — never simulated success.
+- One IG professional account per workspace (upsert replaces).
+  Long-lived token stored ~60d expiry — refresh/rotation belongs to
+  016+.
+- `state` = HMAC(user.id+expiry) with the app secret — callback
+  re-verifies against the session cookie (CSRF binding).
+- Posts import / comment+message webhooks remain 016+ (empty posts
+  list after connect is expected until then).
+
+---
 
 ## Task 014 - API Integration
 

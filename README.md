@@ -149,7 +149,7 @@ sequenceDiagram
 | **Frontend** | [Next.js 15 (App Router)](https://nextjs.org/), [React 19](https://react.dev/) | Modern SSR/CSR hybrid application |
 | **Language** | [TypeScript 5](https://www.typescriptlang.org/) | Strict typing across workspaces |
 | **Styling** | [Tailwind CSS 3.4](https://tailwindcss.com/) | Responsive dark/light theme ready UI |
-| **Backend** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | `apps/api`: health + CORS, product routes on end-user JWT/RLS (Task 014) |
+| **Backend** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | `apps/api`: health + CORS, product routes on end-user JWT/RLS (Task 014), Instagram OAuth (Task 015) |
 | **Database** | [Supabase](https://supabase.com/) (PostgreSQL) | Managed Postgres + Auth + RLS; migrations in `supabase/migrations/` |
 | **Queue (Planned)** | [Redis](https://redis.io/) & [BullMQ](https://bullmq.io/) | Distributed job processing |
 | **Containers (Planned)** | [Docker](https://www.docker.com/) & Docker Compose | Consistent local and production environments |
@@ -242,9 +242,10 @@ cp .env.example .env
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Active | Supabase publishable key — browser-safe by design; never a `service_role`/`sb_secret_` key in the web app |
 | `DATABASE_URL` | Reserved | PostgreSQL connection URI (Supabase provides it if a direct SQL path is needed) |
 | `REDIS_URL` | Reserved | Redis connection URI for queueing |
-| `META_APP_ID` | Reserved | Meta Developer App ID |
-| `META_APP_SECRET` | Reserved | Meta Developer App Secret |
-| `META_WEBHOOK_VERIFY_TOKEN` | Reserved | Webhook verification handshake secret |
+| `META_APP_ID` | Active (API env) | Instagram API with Instagram Login app id (Task 015) |
+| `META_APP_SECRET` | Active (API env) | Meta app secret — apps/api only, never the web app |
+| `META_REDIRECT_URI` | Active (API env) | OAuth callback (default `http://localhost:4000/social-accounts/instagram/callback`) |
+| `META_WEBHOOK_VERIFY_TOKEN` | Reserved | Webhook verification handshake secret (Task 016) |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a
