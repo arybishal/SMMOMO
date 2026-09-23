@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 003)
+Last updated: 2026-09-23 (Task 005)
 
 ---
 
@@ -37,9 +37,10 @@ smmomo/
 │       │   │   └── register/page.tsx Sign-up form (mock submit → /dashboard)
 │       │   └── (dashboard)/
 │       │       ├── layout.tsx        Wraps DashboardShell (sidebar + topbar)
-│       │       ├── dashboard/page.tsx       Metrics, connection card, activity, automations
+│       │       ├── dashboard/page.tsx       Connection, KPIs, usage, activity, deliveries, automations (+ empty states)
 │       │       ├── automations/
-│       │       │   ├── page.tsx             Automation table (status/keyword/stats)
+│       │       │   ├── page.tsx             Server page: header, summary counts, empty state
+│       │       │   ├── list.tsx             Client island: status filter + search + responsive rows (not a route)
 │       │       │   ├── new/page.tsx         Builder concept preview (full builder = Task 006)
 │       │       │   └── [id]/page.tsx        Automation detail; params is a Promise; 404s if unknown
 │       │       ├── posts/page.tsx           Post grid with media placeholders
@@ -92,7 +93,9 @@ smmomo/
 │
 ├── docs/                     Architecture / API decision records
 │   ├── assets/
-│   │   └── banner.jpg        Hero banner for GitHub README
+│   │   ├── banner.jpg            Hero banner for GitHub README
+│   │   ├── how-it-works.jpg      4-step automation workflow infographic
+│   │   └── dashboard-preview.jpg Product dashboard preview graphic
 │   └── .gitkeep
 │
 ├── tests/                    Cross-app tests (empty for now)

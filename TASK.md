@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 003 - Design System (COMPLETE)
+Current Task: Task 005 - Automation List (COMPLETE)
 
-Last Completed Task: Task 003 - Design System
+Last Completed Task: Task 005 - Automation List
 
-Next Task: Task 004 - Dashboard
+Next Task: Task 006 - Automation Builder
 
-Last Updated: 2026-09-23
+Last Updated: 2026-09-23 (Task 005)
 
 ---
 
@@ -41,8 +41,8 @@ Last Updated: 2026-09-23
 | 001 | Project Initialization | COMPLETE |
 | 002 | Frontend Application Shell | COMPLETE |
 | 003 | Design System | COMPLETE |
-| 004 | Dashboard | NOT STARTED |
-| 005 | Automation List | NOT STARTED |
+| 004 | Dashboard | COMPLETE |
+| 005 | Automation List | COMPLETE |
 | 006 | Automation Builder | NOT STARTED |
 | 007 | Posts | NOT STARTED |
 | 008 | Inbox | NOT STARTED |
@@ -70,37 +70,255 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 004 - Dashboard
+## Task 006 - Automation Builder
 
 Status: NOT STARTED
 
 ### Objective
 
-Take the Task 002 dashboard page from first-pass to finished: better hierarchy,
-empty-state handling, and depth that matches what a daily user needs.
+Turn `/automations/new` (and the disabled Edit path on `/automations/[id]`)
+into a complete V1 automation builder UX: post selection, keyword rule,
+private DM, optional public reply, and a live preview — without faking
+persistence.
 
 ### Requirements
 
-- Refine the dashboard page (`app/(dashboard)/dashboard/page.tsx`) in place —
-  it is already data-driven; improve depth, do not rebuild.
-- Empty states: no connected account, no automations, no posts — clear
-  next-action copy with a CTA linking to the right route.
-- Usage snapshot card: reuse `getUsageSummary()` (already in `lib/api/usage.ts`)
-  so usage is visible on the home screen, not only `/settings/usage`.
-- Recent activity: show delivery status alongside comments (delivery result
-  join from `lib/api/inbox.ts` mock data) so failures are visible at a glance.
-- Keep tokens/primitives (`components/ui/*`, `@theme` classes) — no new raw
-  palette values. No chart library.
-- Mock-only: no backend, no new deps.
+- Refine `app/(dashboard)/automations/new/page.tsx` in place; reuse data via
+  `listPosts()` (posts API already exists) — no new data layer.
+- Fields: post/reel selector (from API data), trigger keyword (required,
+  trimmed, non-empty validation), private DM textarea (required; keep
+  `{{first_name}}` variable visible), optional public reply toggle + field.
+- Live preview panel: renders the DM/reply as the follower would see it
+  (client-side, no backend, no chart/preview engine dependency).
+- Validation feedback inline (accessible: labels, focus states, aria where
+  needed); submit button disabled until valid — Save itself stays disabled /
+  preview-style until mutation API exists (Task 014). No fake persistence,
+  no fake activate flow (existing project convention).
+- Wire the Edit action on `/automations/[id]` to open the builder prefilled
+  (or clearly disabled with the same convention if prefilled routing is
+  genuinely awkward — prefer prefilled via query/route state).
+- Responsive: form and preview stack on mobile; no horizontal scroll.
+- Tokens/primitives only; no new deps; mock-only.
+- Do not touch unrelated routes.
 
 ### Notes
 
-- Dashboard shell, sidebar, topbar are done (Task 002) and tokenized
-  (Task 003). Only the page body changes here.
+- Task 005 list links into detail; detail currently has disabled
+  `Edit (Task 006)` / `Pause` buttons — Task 006 owns the Edit path.
+- Full activation workflow / Meta calls remain later tasks (015–018).
 
 ---
 
 # Completed Tasks
+
+## Task 005 - Automation List
+
+Status: COMPLETE
+
+Completed:
+
+- Header updated to spec: `Automations` / "Manage the comment-to-DM
+  workflows running on your Instagram content." / `New automation` CTA →
+  `/automations/new`.
+- Compact summary strip (not metric cards): total / active / paused / draft,
+  counts derived from `listAutomations()` data, colored numbers with text
+  labels (never color-only).
+- Status filter: All / Active / Paused / Draft segmented buttons
+  (`aria-pressed`, token-based selected state, keyboard focus outlines).
+- Lightweight search: single controlled `Input type="search"` matching
+  automation name and keyword (case-insensitive); `aria-label`; filters and
+  search combine (AND); `aria-live` "Showing X of Y" appears only while
+  filtered; "No automations match" + `Clear filters` when a combination
+  yields nothing.
+- List content per row: name → `/automations/[id]`, post caption, `Updated`
+  date (`updatedAt` contract field, `<time dateTime>`), keyword chip,
+  truncated private-DM preview (`title` attr + full text on detail page),
+  status Badge (active→success / paused→paused / draft→draft, unknown →
+  neutral, never coerced to active), performance (matched / DMs / failed —
+  failed in `text-danger` when > 0).
+- Responsive: full columnar layout at `lg+` (12-col grid with matching
+  header row: Automation / Trigger / Private DM / Status / Performance);
+  stacked cards below `lg` with mobile labels for Keyword and Private DM
+  plus an explicit `View` link — no horizontal scrolling anywhere.
+- Client island isolated: new colocated `list.tsx` ("use client") owns only
+  filter/search state; the server `page.tsx` keeps data loading through
+  `lib/api/automations` and renders header, summary, and the true empty
+  state (0 automations → explanation + `Create automation` CTA).
+- No fake mutations: no Activate/Pause/Delete/Duplicate controls added;
+  detail page untouched (its disabled Edit/Pause remain Task 006/014).
+
+What it does:
+
+`/automations` is now a finished V1 management surface — scannable summary,
+filterable/searchable list with DM previews and performance, correct mobile
+representation — while keeping the exact architecture (server fetch → props →
+one client island) and zero new dependencies.
+
+Files (key):
+
+- apps/web/app/(dashboard)/automations/page.tsx (rewritten: header, summary,
+  empty state, delegates list)
+- apps/web/app/(dashboard)/automations/list.tsx (NEW — client filter/search
+  island, colocated; not a route)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- None. Only `listAutomations()` consumed; no new types, fields, endpoints,
+  or mock objects; no fetch outside `lib/api`.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (15 routes; list.tsx is a client module, not a
+  route).
+- Dev-server route verification:
+  - `/automations` → 200 (list renders)
+  - `/automations/auto_1` → 200 (valid detail renders, "Checklist DM" present)
+  - `/automations/missing` → 404 (notFound behavior preserved)
+  - `/`, `/dashboard`, `/posts`, `/inbox`, `/analytics`, `/settings`,
+    `/automations/new` → 200
+- `/automations` HTML assertions: new description copy, summary counts
+  (`4 total`, `2 active`, `1 paused`, `1 draft` — verified in DOM, React
+  text-node `<!-- -->` separators defeat naive substring checks), all four
+  filter buttons with `aria-pressed`, search placeholder, all 4 automation
+  names + 4 keywords, Updated dates, DM preview text, perf labels
+  (matched/DMs/failed), `lg:grid-cols-12` header, `lg:hidden` mobile View
+  link, `lg:col-span-4` row spans.
+- Responsive: structural verification only (breakpoint classes in served
+  HTML). No browser automation in this environment — real-viewport eyeball
+  QA left to owner. Filter/search interaction is client-side and
+  compile-verified (state logic); exercised manually by owner if desired.
+- Empty state (0 automations) and no-match branch: compile-verified only
+  (mock arrays always populated).
+
+Known limitations:
+
+- Filter/search behavior not driven by an automated browser (no tooling; no
+  new deps allowed) — logic is minimal useMemo/useState, verified by types +
+  lint only.
+- Empty-state branches unexercised at runtime while mocks stay populated.
+- No URL-persisted filter/search state (intentionally out of scope — spec
+  forbade URL state libraries/complex query state).
+- Detail-page Edit button still disabled (owned by Task 006).
+
+Next:
+
+Task 006 - Automation Builder
+
+## Task 004 - Dashboard
+
+Status: COMPLETE
+
+Completed:
+
+- Header kept: `Dashboard` / "Your Instagram comment automations at a glance."
+  / primary `New automation` CTA via existing `PageHeader` + `buttonClasses`.
+- Connection card refined: username, follower count, "connected since" date
+  (from `SocialAccount.connectedAt`), Connected badge, Manage link →
+  `/settings/social-accounts`. Disconnected/error state: danger-tinted border
+  and icon, `Needs attention` badge, explanatory copy, `Open settings`
+  secondary-button link — attention without alarming the whole page. The
+  Manage/settings link is no longer hidden on mobile.
+- KPI group (4, weighted hierarchy preserved): Comments matched (emphasis
+  card), DMs sent, Failed deliveries (danger value + "Needs attention"
+  caption only when > 0), Active automations `x / y` (from
+  `AnalyticsSummary.activeAutomations` + list length).
+- No KPI period label: `AnalyticsSummary` has no `period` field — not
+  fabricated per spec §5.
+- Usage snapshot strip: `UsageSummary.period` ("September 2026") + DMs sent,
+  comments processed, public replies, failed (danger styling when > 0) +
+  Details link → `/settings/usage`. Satisfies TASK.md usage requirement using
+  only contract fields.
+- Recent comment activity refined: username, comment text, matched automation,
+  outcome badge computed by joining deliveries on `commentId`
+  (Ignored / Failed / DM sent / Queued / Matched — Badge tones), relative
+  time in a semantic `<time dateTime>` element. Empty state added.
+- Recent deliveries card (new, full width): recipient, kind
+  (Private DM / Public reply), automation name (joined via commentId) or
+  error text when failed, status badge (Delivered/Sent/Queued/Failed — same
+  tone map as Inbox), relative time. Empty state + View inbox link.
+- Automation overview kept: name → detail link, keyword, DM count, status
+  badge, View all → `/automations`. Empty state: explanation + `Create
+  automation` CTA → `/automations/new` (View all hidden when empty).
+- Empty states for all four sections (no account, no automations, no
+  comments, no deliveries): compact text (+ CTA where actionable), no
+  illustrations.
+- Responsive: KPI grid 1 → 2 cols (`sm`) → 4 cols (`lg`); activity +
+  automations side-by-side only at `lg` (stack below); timestamps hidden
+  below `sm` so badges never overflow; all row text truncates; connection
+  actions always visible.
+
+What it does:
+
+The dashboard now answers the eight product questions at a glance (connection,
+automation health, matched comments, DMs, failures, recent events, active
+automations, next action) while staying a single static server component with
+zero new dependencies.
+
+Files (key):
+
+- apps/web/app/(dashboard)/dashboard/page.tsx (refined in place — the only
+  code file changed)
+- TASK.md, Tree.md (documentation updates)
+
+API/mock changes:
+
+- None. Consumed existing modules only: `getAnalyticsSummary`,
+  `getInstagramAccount`, `listRecentComments`, `listRecentDeliveries`,
+  `listAutomations`, `getUsageSummary`. No new types, fields, mock objects,
+  or fetch calls; delivery→automation shown via `commentId` join
+  ("Automation unknown" fallback — no invented backend fields).
+
+Error & loading handling:
+
+- No try/catch: `request()` throws propagate to Next's default error page —
+  nothing swallowed, no parallel fetching architecture introduced.
+- No `loading.tsx` — current architecture has none, mocks resolve instantly;
+  add with the real API (Task 014) if latency warrants it.
+
+Accessibility:
+
+- h1 (`PageHeader`) → h2 (`CardTitle`) hierarchy; semantic `<ul>/<li>`;
+  badges are text-labelled (state never color-only); `<time dateTime>`;
+  meaningful link text ("View inbox", "View all", "Open settings");
+  `focus-visible` outlines via `buttonClasses`, default focus ring on text
+  links; contrast from the Tailwind-derived token palette.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (15 routes).
+- Dev-server smoke: `/`, `/login`, `/register`, `/dashboard`, `/automations`,
+  `/posts`, `/inbox`, `/analytics`, `/settings` — all HTTP 200.
+- `/dashboard` HTML assertions verified present: header copy, username,
+  follower count, Connected badge, all 4 KPI labels, `Usage · September 2026`
+  (UTF-8), activity states (DM sent / Ignored / Failed), delivery kinds
+  (Private DM / Public reply), Delivered badge, failed-error text, Launch Link
+  automation join, New automation CTA, responsive classes
+  (`sm:grid-cols-2`, `lg:grid-cols-4`, `lg:grid-cols-5`, `sm:block`).
+- Queued badge absent from current render: d_6 is 6th in mock order, outside
+  the top-4 slice — code path exists, not a defect.
+- Responsive: structural verification only (grid/breakpoint classes confirmed
+  in served HTML). No browser automation is available in this environment —
+  real-viewport eyeball QA left to owner. Empty states/disconnected card are
+  compile-verified branches (mock arrays are always populated at runtime).
+
+Known limitations:
+
+- Empty states and the disconnected connection state are not exercised at
+  runtime while mocks stay populated.
+- No browser-level visual check (no automation tooling; no new deps allowed).
+- No `loading.tsx`/`error.tsx` yet — revisit when real API latency/failures
+  arrive (Task 014).
+- Delivery automation attribution depends on a matching comment record;
+  otherwise shows "Automation unknown".
+
+Next:
+
+Task 005 - Automation List
 
 ## Task 003 - Design System
 

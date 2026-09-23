@@ -14,11 +14,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#)
 
 [Overview](#-overview--what-is-smmomo) •
+[How It Works](#-how-it-works--4-step-automation-workflow) •
 [Key Features](#-key-features--capabilities) •
+[Dashboard UI](#-modern-dashboard-interface) •
 [Architecture](#-system-architecture--how-smmomo-works) •
 [Tech Stack](#-technology-stack--core-frameworks) •
-[Getting Started](#-getting-started--local-development) •
-[Repository Layout](#-repository-layout--monorepo-structure)
+[Getting Started](#-getting-started--local-development)
 
 ---
 
@@ -37,6 +38,21 @@ When followers comment on an Instagram Post or Reel with a specified trigger key
 
 > **Owner:** Bishal Aryal  
 > **Current Phase:** Frontend foundation with centralized mock API layer.
+
+---
+
+## 🔄 How It Works — 4-Step Automation Workflow
+
+<div align="center">
+  <img src="docs/assets/how-it-works.jpg" alt="How SMMOMO Works - 4-Step Instagram Comment to DM Automation Workflow" width="100%" style="border-radius: 10px; margin: 16px 0;" />
+</div>
+
+| Step | Action | Description |
+|:---:|---|---|
+| **01** | **Connect Account** | Authorize and link your Instagram Professional account securely through Meta OAuth with zero credential leakage. |
+| **02** | **Select Reel & Keyword** | Choose any Instagram post or reel and configure your trigger keywords or hashtags (e.g., `FREE`, `LINK`, `PROMO`). |
+| **03** | **Write Automated DM** | Craft personalized direct messages containing download links, guides, or coupons, plus an optional public comment reply. |
+| **04** | **Instant Auto-Delivery** | Followers comment, the event triggers in real time, the DM is delivered in seconds, and performance metrics populate your dashboard. |
 
 ---
 
@@ -74,6 +90,16 @@ When followers comment on an Instagram Post or Reel with a specified trigger key
     </td>
   </tr>
 </table>
+
+---
+
+## 🖥️ Modern Dashboard Interface
+
+<div align="center">
+  <img src="docs/assets/dashboard-preview.jpg" alt="SMMOMO Modern SaaS Dashboard Interface" width="100%" style="border-radius: 10px; margin: 16px 0;" />
+</div>
+
+Track incoming comment activity, monitor queue health, view active campaign conversions, and manage automations from a single centralized dark-themed command center.
 
 ---
 
@@ -239,16 +265,6 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 | `rounded-card` | `rounded-lg` | Cards, panels, menus |
 | `rounded-pill` | `rounded-full` | Badges, avatars |
 | `shadow-card` | `shadow-sm` | Card elevation |
-
-### Typography & spacing
-
-- Fonts: Geist Sans (body) / Geist Mono (code) — `--font-sans` / `--font-mono`.
-- Hierarchy: page titles `text-xl`, section titles `text-lg`, card titles `text-sm font-semibold`, body `text-sm`, meta `text-xs`, metric values `text-2xl`/`text-3xl font-semibold tabular-nums`.
-- Spacing: standard Tailwind scale (`p-4`, `gap-4`, `space-y-6`) — no custom spacing tokens.
-
-### Status badges
-
-Tone-based: `success`, `paused`, `draft`, `failed`, `neutral`, `info`. Rings use the opacity modifier (`ring-success/20`) rather than dedicated ring tokens.
 
 ---
 
