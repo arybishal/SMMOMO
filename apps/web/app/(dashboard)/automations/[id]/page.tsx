@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
+import { StatusToggle } from "./status-toggle";
 
 export default async function AutomationDetailPage({
   params,
@@ -108,9 +109,7 @@ export default async function AutomationDetailPage({
         >
           Edit
         </Link>
-        <button type="button" className={buttonClasses("secondary")} disabled>
-          {automation.status === "active" ? "Pause" : "Activate"}
-        </button>
+        <StatusToggle id={automation.id} status={automation.status} />
         <Link
           href="/automations"
           className={`${buttonClasses("ghost")} ml-auto`}

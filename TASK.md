@@ -6,23 +6,24 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 014 - API Integration
+Current Task: Task 015 - Meta OAuth
 
-Last Completed Task: Task 013 - Authentication
+Last Completed Task: Task 014 - API Integration
 
-Next Task: Task 014 - API Integration
+Next Task: Task 015 - Meta OAuth
 
-Last Updated: 2026-09-23 (Task 013)
+Last Updated: 2026-09-23 (Task 014)
 
-Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
-required) — npm install clean; typecheck/lint/build exit 0; dev server no
-runtime errors; 18/18 routes (incl. `auto_1` 200 / `missing` 404 /
-`?edit=nope` 404 / `?edit=` → New); dashboard 11/11, automations 9/9,
-builder 8/8, edit-flow 7/7, posts 3/3, settings 4/4 HTML assertions;
-design tokens + responsive classes intact; API seam is the only `fetch`;
-Supabase env vars present (values not logged). Note: Tasks 001–006
-verified as the requested baseline; Task 007 was already implemented and
-pushed (commit `8185ec4`) before this checkpoint ran — docs match code.
+Verification: 2026-09-23 Task 014 validation PASSED — typecheck/lint/
+build/build:api exit 0 (dashboard routes `ƒ` force-dynamic); migration
+`20260923170000` applied via `supabase db push`; API anon/bogus cookie
+401, CORS preflight ACAO+ACAC, cookie sweep 10 routes correct shapes
+(honest empties + 404s), bootstrap idempotent (1 workspace + 1 owner
+membership), POST/PATCH error paths 400/404; web 12/12 authenticated
+routes 200 (unknown automation 404) with honest empty-state assertions
+21/21; no-cookie + bogus-cookie redirects unchanged; fresh page hits add
+0 new API failures; no secret key in app code; servers stopped after
+validation.
 
 Audit: 2026-09-23 read-only Supabase architecture audit PASSED — schema
 designed in `supabase/migrations/20260923120000_smmomo_foundation.sql`
@@ -77,7 +78,7 @@ blocking anon); see the Task 012 record below.
 | 011 | Backend Foundation | COMPLETE |
 | 012 | Database | COMPLETE |
 | 013 | Authentication | COMPLETE |
-| 014 | API Integration | NOT STARTED |
+| 014 | API Integration | COMPLETE |
 | 015 | Meta OAuth | NOT STARTED |
 | 016 | Meta Webhooks | NOT STARTED |
 | 017 | Automation Engine | NOT STARTED |
@@ -96,55 +97,184 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 014 - API Integration
+## Task 015 - Meta OAuth
 
 Status: NOT STARTED
 
 ### Objective
 
-Serve real product data from `apps/api` (Fastify) against the applied
-Supabase schema, put the web app on that API (`USE_MOCK=false`), and
-establish the first-user workspace — keeping RLS/membership as the
-isolation boundary.
+Connect a real Instagram Professional account via Meta OAuth so the
+Connect/Disconnect affordances (social-accounts settings, topbar pill,
+posts empty state) become live instead of Task 010's honest disabled
+copy — with tokens stored for later webhook/engine work (016–018).
 
 ### Requirements (derived from the roadmap + deferral notes in Tasks
-012/013 — confirm against the master prompt before starting)
+007/010/014 — confirm against the master prompt before starting)
 
-- Fastify routes matching the `lib/api` seam paths and
-  `types/index.ts` shapes: posts, automations (+ by id; save/activate
-  flows if in scope), analytics summary, usage summary, social
-  accounts; inbox comments/deliveries depend on tables that do not
-  exist yet (016–019) — scope honestly (honest empty/404 vs. landing
-  minimal tables is a call to make and document, never fake rows).
-- Authenticate API requests from the browser session (Supabase
-  cookie/JWT verification or `getUser` with the publishable key;
-  never a service key inside `apps/web`). If `apps/api` ever needs
-  `service_role`, it lives in API env only — and prefer end-user JWTs
-  so RLS stays the boundary.
-- First-user workspace seeding (explicitly deferred here by 012/013):
-  first authenticated call creates `workspaces` + `workspace_members`
-  row. Document the bootstrap; do not weaken RLS to achieve it.
-- Flip `USE_MOCK=false` in `lib/api/client.ts` only once routes
-  answer; resolve the `posts.ts` dual path (dormant Supabase-direct
-  branch vs. API seam) — pick one direction and make it consistent.
-- CORS/credentials across localhost:3000 ↔ :4000 (cookies are
-  host-scoped, not port-scoped — verify credentialed requests actually
-  flow; adjust `CORS_ORIGIN`/`credentials` as needed).
-- Validation: typecheck/lint/build, route sweep + auth redirects
-  unchanged, real-data integration checks (rows through the seam or
-  honest empty states), anon still denied, no secret key in the web
-  app, regressions on all routes.
+- Meta app + OAuth code flow for Instagram Business/Creator (scopes
+  for basic profile + content; long-lived token exchange + refresh as
+  Meta requires). App id/secret live in API env only — never in
+  `apps/web` and never committed.
+- Persist connection on `social_accounts` (RLS member-scoped): upsert
+  on success, honest status (`connected` / needs attention), real
+  username/followers if the graph returns them.
+- Wire Connect/Disconnect: settings social-accounts buttons, topbar
+  Instagram pill, posts-page empty state — remove Task 010/014 gated
+  copy once live; Disconnect clears the row (and revokes if Meta
+  supports it without extra scope).
+- API routes for connect start (redirect/URL) + callback + disconnect
+  matching whatever UI shape is chosen; web only through the
+  `lib/api` seam (no direct fetch to Meta from the browser).
+- Validation: typecheck/lint/build, routes, no secrets in repo/web
+  bundle, connection row behaves under RLS, regressions.
 
 ### Notes
 
-- `comments`/`deliveries`/`usage` tables belong to 016–019 — do not
-  invent them here unless the master prompt says so.
-- Generated Supabase types (`supabase gen types`) still deferred
-  (needs CLI token) — manual row interfaces are fine short-term.
+- `posts` sync / media import beyond what the connection returns is
+  016+ unless the master prompt says otherwise.
+- No fake OAuth: if Meta app credentials are unavailable in this
+  environment, document the blocker and ship the real code path
+  against env vars the operator supplies — never simulate success.
 
 ---
 
 # Completed Tasks
+
+## Task 014 - API Integration
+
+Status: COMPLETE
+
+Completed:
+
+- **End-user JWT auth for every product API route** — `apps/api/src/
+  supabase.ts` parses the `sb-<ref>-auth-token` cookie (chunked +
+  `base64-` base64url JSON, same format as `@supabase/ssr`), verifies
+  the access token via `GET /auth/v1/user`, then talks to PostgREST
+  **as that user** (RLS is the isolation boundary — no `service_role`
+  / `sb_secret` anywhere in source; env falls back to public URL +
+  publishable key). Fastify preHandler: `requireUser` → 401 "Sign in
+  required", then `ensureWorkspace()` RPC → `req.workspaceId` (500
+  "Workspace setup failed" on RPC failure). `/health` skips auth.
+- **Workspace bootstrap migration** — `20260923170000_bootstrap_and_
+  automation_writes.sql` APPLIED via `supabase db push` (PAT session
+  env var only): `bootstrap_workspace()` SECURITY DEFINER RPC
+  (idempotent create-or-get workspace + owner membership for
+  `auth.uid()`, execute granted to `authenticated` only) + member
+  INSERT/UPDATE policies on `automations` (the foundation migration's
+  deferred write policies). Verified live: exactly 1 workspace + 1
+  owner membership after multiple authenticated requests (idempotent).
+- **Product routes** in `app.ts` matching the `lib/api` seam +
+  `types/index.ts` shapes: `GET /posts`, `/posts/:id` (404),
+  `/automations` (with `post:posts(caption)` embed, newest first),
+  `/automations/:id`, `POST /automations` (validates fields, FK miss →
+  400 "Unknown post", creates **draft**), `PATCH /automations/:id`
+  (partial; status whitelist → 400; 0 rows → 404; empty patch → 400),
+  `GET /social-accounts`, `/social-accounts/instagram` (404 when
+  none), `/analytics/summary` (lifetime sums from automations,
+  `daily: []`, `publicReplies: 0`), `/usage/summary` (`period: "All
+  time"`, lifetime sums — counters are lifetime), `/comments/recent` +
+  `/deliveries/recent` → `[]` (tables arrive 016–019 — honest empty,
+  never fake rows). Row→camelCase mappers for all shapes.
+- **CORS credentials** — `credentials: true` with concrete origin
+  (never `*`); preflight verified `access-control-allow-origin:
+  http://localhost:3000` + `access-control-allow-credentials: true`.
+- **Seam flip** — `USE_MOCK = false` in `lib/api/client.ts` (the
+  point of this task); `request()` gained `RequestOptions`
+  (`method`/`body`, JSON headers when body present) and **404 →
+  `undefined as T`** so get-by-id keeps its `| undefined` contract;
+  **server-side cookie forwarding** (dynamic `import("next/headers")`
+  → forward `cookie` header) so Server Component fetches authenticate
+  — without it every dashboard page 500'd on API 401 (found in
+  validation, fixed at the one shared call site).
+- **`posts.ts` dual path resolved** — dormant Supabase-direct branch
+  deleted; plain API seam like every other module.
+- **Writes through the seam** — `automations.ts` gained
+  `AutomationInput`, `createAutomation`, `updateAutomation` (mock
+  resolvers throw `mockWrite()`); builder wired to real submit
+  (name derived from keyword — no Name field; creates as draft;
+  `router.push` + `refresh`; error `role="alert"`; button
+  `Saving…`); detail page Pause/Activate replaced disabled stub with
+  `status-toggle.tsx` island (PATCH status + `router.refresh()`).
+- **`(dashboard)/layout.tsx` force-dynamic** — session-scoped segment
+  must not prerender at build (a build-time fetch has no cookie →
+  401); one segment config covers every dashboard page.
+
+Validation:
+
+- `npm run typecheck` (api+web), `npm run lint`, `npm run build`
+  (dashboard routes all `ƒ`, landing/login/register stay `○`),
+  `npm run build:api` — all exit 0 (re-run after every edit).
+- Migration: `npx supabase login/link/db push` → "Finished supabase
+  db push" listing exactly `20260923170000_bootstrap_and_automation_
+  writes.sql`.
+- API anon `GET /posts` → **401**; forged/bogus cookie → 401;
+  `GET /health` → 200 without auth.
+- API with valid cookie (fresh password-grant session harness) —
+  10/10: `/posts`,`/automations`,`/social-accounts`,`/comments/
+  recent`,`/deliveries/recent` → `200 []`; `/social-accounts/
+  instagram` → 404; `/analytics/summary` honest zeros + `daily: []`;
+  `/usage/summary` `period: "All time"`; unknown automation/post
+  uuids → 404.
+- Bootstrap: REST as user shows **exactly one** workspace
+  (`My Workspace`) + one `owner` membership after many requests
+  (RPC idempotent).
+- Write error paths: POST missing fields → 400 "postId, keyword, and
+  privateReply are required"; POST unknown post uuid → 400 "Unknown
+  post"; PATCH bad status → 400 "status must be active, paused, or
+  draft"; PATCH unknown id → 404. (Happy-path POST needs a real post
+  row — Task 015+ Meta content; not faked here.)
+- CORS preflight OPTIONS → 204 with ACAO origin + ACAC true.
+- Web cookie sweep — 12/12 protected routes **200** (unknown
+  `/automations/<uuid>` → 404); `/login`,`/register` → 307
+  `/dashboard`; landing 200. Content assertions **21/21** honest
+  empties: dashboard `Instagram not connected` / `No recent
+  comments` / `No automations yet` / `No delivery activity yet` /
+  `All time` / `Sign out`; analytics chartUnavailable + 3 empty
+  tables; inbox/posts/settings/social-accounts/usage/automations/
+  builder strings (`All time · 0 DMs sent`, `No posts available`,
+  `Save automation`, drafts hint); mock handle `bishal.grows` absent
+  from live pages; account page still real probe email + Save.
+- No-cookie regression: all 6 protected prefixes → 307
+  `/login?next=%2F…`; login/register 200; landing 200; bogus cookie
+  → 307 login (proxy + API both reject).
+- Logs: 0 new `API request failed` lines across a fresh 7-page hit
+  (count stable at pre-fix total); API level 40/50 = 0; secret scan
+  `sb_secret_[A-Za-z0-9]{10,}` in app sources = 0; gitignored
+  `.env*` unchanged.
+- No browser automation — write-button interaction claims are
+  structural (form wiring + status-toggle island) + API-level.
+  Servers stopped (3000/4000 free) after validation.
+
+Files:
+
+- supabase/migrations/20260923170000_bootstrap_and_automation_writes.sql (new, applied)
+- apps/api/src/supabase.ts (new — cookie/JWT auth, PostgREST, bootstrap RPC)
+- apps/api/src/app.ts (all product routes + auth preHandler + CORS credentials)
+- apps/web/lib/api/client.ts (USE_MOCK=false, request options, 404→undefined, server cookie forward)
+- apps/web/lib/api/posts.ts (plain seam — dual path removed)
+- apps/web/lib/api/automations.ts (createAutomation, updateAutomation, AutomationInput)
+- apps/web/app/(dashboard)/layout.tsx (force-dynamic)
+- apps/web/app/(dashboard)/automations/new/builder.tsx (real submit)
+- apps/web/app/(dashboard)/automations/[id]/page.tsx + status-toggle.tsx (new island)
+- TASK.md, Tree.md (this record)
+
+Notes:
+
+- Design decisions to carry forward: end-user JWT only (never add a
+  service key to the web app; API env-only if ever required);
+  bootstrap is SECURITY DEFINER not weakened RLS; comments/deliveries
+  tables honestly empty until 016–019; usage period is "All time"
+  because counters are lifetime (a calendar period needs the usage
+  tables); new automations start `draft` (Activate on detail page);
+  builder derives `name` from keyword.
+- Known gap: cannot E2E the happy-path POST from the UI until posts
+  exist (needs Meta content → Task 015); error paths validated.
+- Cookie harness (reuse): `sb-<ref>-auth-token=base64-<base64url(JSON
+  session)>` from password grant; tokens ~1h — re-grant if expired.
+- `comments`/`deliveries` tables + webhook/engine writes remain
+  016–019; generated Supabase types still deferred (CLI token).
+
+---
 
 ## Task 013 - Authentication
 

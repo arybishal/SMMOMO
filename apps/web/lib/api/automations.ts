@@ -11,3 +11,34 @@ export function getAutomation(id: string): Promise<Automation | undefined> {
     mockAutomations.find((a) => a.id === id),
   );
 }
+
+export interface AutomationInput {
+  postId: string;
+  keyword: string;
+  privateReply: string;
+  publicReply: string | null;
+  name?: string;
+}
+
+function mockWrite(): never {
+  throw new Error("mock write not implemented — use the real API (Task 014)");
+}
+
+export function createAutomation(input: AutomationInput): Promise<Automation> {
+  return request(
+    "/automations",
+    mockWrite,
+    { method: "POST", body: input },
+  );
+}
+
+export function updateAutomation(
+  id: string,
+  patch: Partial<AutomationInput> & { status?: Automation["status"] },
+): Promise<Automation> {
+  return request(
+    `/automations/${id}`,
+    mockWrite,
+    { method: "PATCH", body: patch },
+  );
+}

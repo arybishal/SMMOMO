@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import { createAutomation, updateAutomation } from "@/lib/api/automations";
 import type { Automation, Post } from "@/types";
 
 type Field = "post" | "keyword" | "dm" | "reply";
@@ -49,12 +51,15 @@ export function AutomationBuilder({
   initial?: Automation;
   initialPostId?: string;
 }) {
+  const router = useRouter();
   const [postId, setPostId] = useState(initial?.postId ?? initialPostId ?? "");
   const [keyword, setKeyword] = useState(initial?.keyword ?? "");
   const [dm, setDm] = useState(initial?.privateReply ?? "");
   const [replyOn, setReplyOn] = useState(initial?.publicReply != null);
   const [reply, setReply] = useState(initial?.publicReply ?? "");
   const [touched, setTouched] = useState<Partial<Record<Field, boolean>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const invalid: Record<Field, boolean> = {
     post: postId === "",
@@ -78,13 +83,45 @@ export function AutomationBuilder({
     <div className="grid items-start gap-6 lg:grid-cols-2">
       <form
         noValidate
-        onSubmit={(e) => e.preventDefault()}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!isValid || pending) return;
+          setError(null);
+          setPending(true);
+          try {
+            const input = {
+              postId,
+              keyword: keyword.trim(),
+              privateReply: dm.trim(),
+              publicReply: replyOn ? reply.trim() : null,
+              // No separate name field in this builder — the keyword is the
+              // user-facing label until a dedicated field exists.
+              name: keyword.trim(),
+            };
+            const saved = initial
+              ? await updateAutomation(initial.id, input)
+              : await createAutomation(input);
+            router.push(`/automations/${saved.id}`);
+            router.refresh();
+          } catch {
+            setError("Could not save — check your connection and try again.");
+            setPending(false);
+          }
+        }}
         className="space-y-4"
       >
         <Card className="p-6">
           <h2 className="text-sm font-semibold text-foreground">Setup</h2>
 
           <div className="mt-5 space-y-6">
+            {error && (
+              <p
+                role="alert"
+                className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+              >
+                {error}
+              </p>
+            )}
             {/* WHEN — post selector */}
             <div className="space-y-1.5">
               <p className={sectionLabel}>When — Instagram comment</p>
@@ -205,8 +242,8 @@ export function AutomationBuilder({
         </Card>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={!isValid}>
-            Save automation
+          <Button type="submit" disabled={!isValid || pending}>
+            {pending ? "Saving…" : "Save automation"}
           </Button>
           <Link
             href={initial ? `/automations/${initial.id}` : "/automations"}
@@ -216,8 +253,8 @@ export function AutomationBuilder({
           </Link>
         </div>
         <p className="text-xs text-subtle-foreground">
-          Saving and activation arrive with Task 014 — this screen validates
-          and previews only; nothing is stored yet.
+          New automations are saved as drafts — open the automation and press
+          Activate when you are ready to run it.
         </p>
       </form>
 

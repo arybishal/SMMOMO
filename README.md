@@ -149,7 +149,7 @@ sequenceDiagram
 | **Frontend** | [Next.js 15 (App Router)](https://nextjs.org/), [React 19](https://react.dev/) | Modern SSR/CSR hybrid application |
 | **Language** | [TypeScript 5](https://www.typescriptlang.org/) | Strict typing across workspaces |
 | **Styling** | [Tailwind CSS 3.4](https://tailwindcss.com/) | Responsive dark/light theme ready UI |
-| **Backend** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | Scaffolded in `apps/api` (health check + CORS; product routes = Task 014) |
+| **Backend** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | `apps/api`: health + CORS, product routes on end-user JWT/RLS (Task 014) |
 | **Database** | [Supabase](https://supabase.com/) (PostgreSQL) | Managed Postgres + Auth + RLS; migrations in `supabase/migrations/` |
 | **Queue (Planned)** | [Redis](https://redis.io/) & [BullMQ](https://bullmq.io/) | Distributed job processing |
 | **Containers (Planned)** | [Docker](https://www.docker.com/) & Docker Compose | Consistent local and production environments |
