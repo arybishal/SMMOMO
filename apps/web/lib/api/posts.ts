@@ -36,7 +36,7 @@ interface PostRow {
 }
 
 async function fetchPostsFromSupabase(): Promise<Post[]> {
-  const supabase = getServerSupabase();
+  const supabase = await getServerSupabase();
   // No workspace_id filter here on purpose: RLS is the isolation boundary —
   // `members_read_posts` only returns rows in the caller's workspaces.
   const { data, error } = await supabase

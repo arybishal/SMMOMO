@@ -2,11 +2,30 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { getBrowserSupabase } from "@/lib/supabase/client";
+
+// Only same-origin app paths; never another origin or the auth pages
+// themselves (avoids redirect loops).
+function safeNext(raw: string | null): string {
+  if (
+    raw &&
+    raw.startsWith("/") &&
+    !raw.startsWith("//") &&
+    !raw.startsWith("/login") &&
+    !raw.startsWith("/register")
+  ) {
+    return raw;
+  }
+  return "/dashboard";
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   return (
     <div className="w-full max-w-sm">
@@ -18,12 +37,40 @@ export default function LoginPage() {
 
         <form
           className="mt-6 space-y-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            // Mock sign-in; real authentication is Task 013.
-            router.push("/dashboard");
+            setError(null);
+            setPending(true);
+            const form = new FormData(e.currentTarget);
+            try {
+              const { error: err } = await getBrowserSupabase().auth.signInWithPassword({
+                email: String(form.get("email") ?? ""),
+                password: String(form.get("password") ?? ""),
+              });
+              if (err) {
+                setError(err.message);
+                setPending(false);
+                return;
+              }
+              const next = safeNext(
+                new URLSearchParams(window.location.search).get("next"),
+              );
+              router.push(next);
+              router.refresh();
+            } catch {
+              setError("Something went wrong — try again.");
+              setPending(false);
+            }
           }}
         >
+          {error && (
+            <p
+              role="alert"
+              className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+            >
+              {error}
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -36,12 +83,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <span className="text-xs text-subtle-foreground">
-                Forgot password?
-              </span>
-            </div>
+            <Label htmlFor="password">Password</Label>
             <Input
               id="password"
               name="password"
@@ -51,8 +93,8 @@ export default function LoginPage() {
               placeholder="••••••••"
             />
           </div>
-          <Button type="submit" className="w-full">
-            Sign in
+          <Button type="submit" className="w-full" disabled={pending}>
+            {pending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
 

@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 013 - Authentication
+Current Task: Task 014 - API Integration
 
-Last Completed Task: Task 012 - Database
+Last Completed Task: Task 013 - Authentication
 
-Next Task: Task 013 - Authentication
+Next Task: Task 014 - API Integration
 
-Last Updated: 2026-09-23 (Task 012)
+Last Updated: 2026-09-23 (Task 013)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -76,7 +76,7 @@ blocking anon); see the Task 012 record below.
 | 010 | Settings | COMPLETE |
 | 011 | Backend Foundation | COMPLETE |
 | 012 | Database | COMPLETE |
-| 013 | Authentication | NOT STARTED |
+| 013 | Authentication | COMPLETE |
 | 014 | API Integration | NOT STARTED |
 | 015 | Meta OAuth | NOT STARTED |
 | 016 | Meta Webhooks | NOT STARTED |
@@ -96,64 +96,185 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 013 - Authentication
+## Task 014 - API Integration
 
 Status: NOT STARTED
 
 ### Objective
 
-Replace the mock login/register redirects with real Supabase Auth
-(email + password) — cookie-based sessions, route protection, sign-out,
-and the Settings account page reflecting the signed-in user — while the
-data layer stays on `USE_MOCK=true` and no server-side secret key ever
-enters the web app.
+Serve real product data from `apps/api` (Fastify) against the applied
+Supabase schema, put the web app on that API (`USE_MOCK=false`), and
+establish the first-user workspace — keeping RLS/membership as the
+isolation boundary.
 
-### Requirements (derived from roadmap row "Authentication" + Task 010's
-"Save enabled with 013" note — confirm against the master prompt before
-starting)
+### Requirements (derived from the roadmap + deferral notes in Tasks
+012/013 — confirm against the master prompt before starting)
 
-- Add `@supabase/ssr` (the one new dependency this task requires;
-  `@supabase/supabase-js` already present) for cookie-based
-  browser/server clients; extend `lib/supabase/*` (publishable key only —
-  the secret key stays out of the repo per .env.example rule).
-- Route protection: unauthenticated users on app routes → `/login`;
-  authenticated users off `/login`/`/register` → `/dashboard`. Follow
-  Next 16 conventions — **read `node_modules/next/dist/docs/` first**
-  (middleware/proxy file naming may differ from older knowledge; AGENTS.md
-  warns about this).
-- `login`/`register` pages: real `signInWithPassword`/`signUp`, honest
-  inline error states (bad credentials, duplicate email, email-confirmation
-  pending — check the hosted project's auth settings first via
-  `GET /auth/v1/settings` with the publishable key; local config.toml
-  has confirmations off but hosted defaults may differ).
-- Sign-out control wired to `signOut()` (sidebar/topbar — wherever the
-  Task 002 avatar/placeholder sits); mock-only fast-switch removed.
-- Settings account page: show the real signed-in email (session user)
-  instead of the placeholder literal; password change via
-  `updateUser({password})` and name via `updateUser({data:{name}})` are
-  Auth-API-only and may finally enable Save honestly — evaluate during
-  implementation; if enabled, the Task 010 hint copy must be updated to
-  match reality (never leave a stale "disabled until 013" hint once 013
-  lands).
-- Data reads/writes stay mocked (`USE_MOCK=true` untouched); RLS SELECT
-  policies won't matter until Task 014 wires API reads — first-user
-  workspace seeding (`workspace_members` row) is explicitly Task 014's
-  problem, not this one.
-- Validation: typecheck/lint/build, route sweep (protected redirects
-  both directions), login success/failure flows testable via the real
-  Auth API, regressions on all existing routes, no secret key anywhere
-  in client bundles (grep build output / network responses).
+- Fastify routes matching the `lib/api` seam paths and
+  `types/index.ts` shapes: posts, automations (+ by id; save/activate
+  flows if in scope), analytics summary, usage summary, social
+  accounts; inbox comments/deliveries depend on tables that do not
+  exist yet (016–019) — scope honestly (honest empty/404 vs. landing
+  minimal tables is a call to make and document, never fake rows).
+- Authenticate API requests from the browser session (Supabase
+  cookie/JWT verification or `getUser` with the publishable key;
+  never a service key inside `apps/web`). If `apps/api` ever needs
+  `service_role`, it lives in API env only — and prefer end-user JWTs
+  so RLS stays the boundary.
+- First-user workspace seeding (explicitly deferred here by 012/013):
+  first authenticated call creates `workspaces` + `workspace_members`
+  row. Document the bootstrap; do not weaken RLS to achieve it.
+- Flip `USE_MOCK=false` in `lib/api/client.ts` only once routes
+  answer; resolve the `posts.ts` dual path (dormant Supabase-direct
+  branch vs. API seam) — pick one direction and make it consistent.
+- CORS/credentials across localhost:3000 ↔ :4000 (cookies are
+  host-scoped, not port-scoped — verify credentialed requests actually
+  flow; adjust `CORS_ORIGIN`/`credentials` as needed).
+- Validation: typecheck/lint/build, route sweep + auth redirects
+  unchanged, real-data integration checks (rows through the seam or
+  honest empty states), anon still denied, no secret key in the web
+  app, regressions on all routes.
 
 ### Notes
 
-- `workspace_members` RLS helper already exists (applied in Task 012)
-  and denies anon — authenticated-but-no-membership will see empty data
-  once real reads land; document, don't "fix" with permissive policies.
-- Sign-up creates `auth.users` rows only — no tables touched.
+- `comments`/`deliveries`/`usage` tables belong to 016–019 — do not
+  invent them here unless the master prompt says so.
+- Generated Supabase types (`supabase gen types`) still deferred
+  (needs CLI token) — manual row interfaces are fine short-term.
 
 ---
 
 # Completed Tasks
+
+## Task 013 - Authentication
+
+Status: COMPLETE
+
+Completed:
+
+- **Cookie sessions via `@supabase/ssr@0.12.7`** (the one new
+  dependency; installed in `apps/web`) — `lib/supabase/client.ts`
+  lazily returns `createBrowserClient` (publishable key only,
+  env-checked factory); `lib/supabase/server.ts` is now async and
+  returns `createServerClient` with `cookies()` getAll/setAll
+  (setAll failures swallowed in Server Components — `proxy.ts`
+  handles token rotation). Dormant `posts.ts` branch updated to
+  `await getServerSupabase()`.
+- **`apps/web/proxy.ts` (Next 16 middleware→proxy rename)** — named
+  `proxy` export + `config.matcher` excluding `_next` static/image/
+  favicon/images. Runs `supabase.auth.getUser()` (JWT verified with
+  Auth — not a cookie-presence check). Unauthenticated + protected
+  prefix (`/dashboard,/automations,/posts,/inbox,/analytics,/settings`,
+  exact or nested) → `307 /login?next=<urlencoded>`; authenticated on
+  `/login`/`/register` → `307 /dashboard`. Landing, auth pages, and
+  assets stay public. Convention confirmed from
+  `node_modules/next/dist/docs` per AGENTS.md warning.
+- **Login page** — real `signInWithPassword`; inline `role="alert"`
+  errors (raw Supabase message: invalid credentials, email not
+  confirmed, etc.); pending button state; `?next` read from
+  `window.location` at submit time (avoids useSearchParams/Suspense),
+  sanitized by `safeNext` (same-origin path only, never auth pages —
+  no redirect loop; fallback `/dashboard`). Dead "Forgot password?"
+  text removed (no recovery flow exists — no fake affordance).
+- **Register page** — real `signUp` with `options.data.name`; session
+  returned (auto-confirm someday) → straight to `/dashboard`; hosted
+  has Confirm email ON (`mailer_autoconfirm:false`, verified), so the
+  default path shows an honest "Check your email" state + link to
+  sign in — no fake dashboard push.
+- **Topbar** — static "BA" avatar replaced with real initials (name
+  from `user_metadata.name`, fallback email local part; browser
+  `getUser` + `onAuthStateChange` subscription) and a **Sign out**
+  button (`signOut()` → push `/login` + `router.refresh()`).
+  Instagram connection pill unchanged (Task 015); its comment now
+  points there.
+- **Settings → Account** — split into server `page.tsx` (session
+  `getUser`, `redirect("/login")` belt-and-suspenders, passes
+  `email` + `initialName`) and colocated `account-form.tsx` island:
+  Name editable, Email `readOnly`/`aria-readonly` with "Email changes
+  aren't supported yet." hint, optional New+Confirm password
+  (client min-length + match validation), one
+  `updateUser({ data:{name}, password? })` call, success
+  `role="status"` / error `role="alert"`, passwords cleared on
+  success. **Save is enabled** — Task 010's "disabled until Task 013"
+  hint removed as the spec required; no stale copy remains.
+- **Env fix found during build**: Next loads `.env.local` from the
+  workspace dir, not the monorepo root — copied root `.env.local` →
+  `apps/web/.env.local` (both gitignored: root `.gitignore`
+  `.env.local` + `apps/web/.gitignore` `.env*`; verified with
+  `git check-ignore`). Root `.env.example` unchanged (documents the
+  vars). Build log confirms `Environments: .env.local`.
+- Data layer untouched: `USE_MOCK=true` still; no
+  `workspace_members` seeding (explicitly 014's problem); no
+  service/secret key anywhere in the web app.
+
+Validation:
+
+- `npm run typecheck` (api+web), `npm run lint`, `npm run build`
+  (Next 16.3.6: `ƒ Proxy (Middleware)` registered, `/settings/account`
+  now `ƒ` dynamic), `npm run build:api` — all exit 0; final re-run of
+  typecheck+lint after all edits also green.
+- No-cookie sweep (14 routes): `/`, `/login`, `/register` → 200; all
+  11 protected paths (incl. nested/unknown ids like
+  `/automations/abc`) → 307 `/login?next=%2F…` — 14/14 correct.
+- With forged session cookie (test-user password grant → session JSON
+  → `base64-`+base64url value in
+  `sb-etwuqthopqrzffdgvhqs-auth-token`; format confirmed from
+  `@supabase/ssr` source, default encoding `base64url`): 12 protected
+  routes 200 (`/automations/abc` correctly 404 behind auth),
+  `/login`+`/register` → 307 `/dashboard`, `/` stays 200 — redirects
+  correct in both directions.
+- Real Auth API: password grant for
+  `task013-probe@smmomo-test.com` (confirmed user) → token + user;
+  wrong password → `400 invalid_credentials` (the exact message the
+  UI surfaces).
+- Content assertions with cookie — 16/16: dashboard `DMs sent` +
+  `Sign out` + mock identity intact; account page shows real probe
+  email, `Save changes`, password block; settings hub/usage/posts/
+  inbox/analytics/automations titles present; Save `<button>` has
+  **no** `disabled` attribute (regex-checked, `disabled:` Tailwind
+  classes not mistaken for the attr); email input `readOnly` +
+  `aria-readonly` + real value; login/register SSR include their
+  forms and no premature `role="alert"`.
+- Assets: `favicon.ico` and a `/_next/static` chunk → 200 without a
+  session (matcher exclusion works); landing 200 with and without
+  cookie.
+- Secret scan: no `sb_secret` in either `.env*` file (boolean
+  `Select-String -Quiet`, values never printed); the two
+  `sb_secret` matches under `.next/static` + `.next/server` are
+  supabase-js library code (`e.startsWith("sb_secret_")` string
+  checks), not key material; `git status` clean of env files.
+- Regression: API `GET /health` 200 on :4000 alongside web dev on
+  :3000 (coexistence holds); dev log 0 `⨯`/Error lines; `USE_MOCK`
+  untouched; `lib/mock` untouched; 16 routes re-verified.
+- No browser automation — sign-in/click paths are claims at the
+  code + Auth-API level; redirect and HTML assertions are
+  HTTP-level. Servers stopped (3000/4000 free) after validation.
+
+Files:
+
+- apps/web/proxy.ts (new)
+- apps/web/lib/supabase/client.ts, server.ts (@supabase/ssr rewrite)
+- apps/web/lib/api/posts.ts (await async server client)
+- apps/web/app/(auth)/login/page.tsx, register/page.tsx
+- apps/web/components/layout/topbar.tsx (real initials + Sign out)
+- apps/web/app/(dashboard)/settings/account/page.tsx (server page) +
+  account-form.tsx (new client island)
+- apps/web/package.json + package-lock.json (@supabase/ssr@0.12.7)
+- local-only, gitignored: apps/web/.env.local (copy of root)
+
+Notes:
+
+- Hosted `mailer_confirm` stays false→email confirmation required
+  (flipped true only transiently during test-user provisioning, then
+  restored — re-verify it if signup misbehaves). Test user for future
+  E2E: `task013-probe@smmomo-test.com` / `Task013-Probe-Pw!2026`
+  (test-only project; never reuse this pattern for real secrets).
+- No password-recovery UI (no fake link); Instagram pill still static
+  (015); name/password updates touch only Auth user data — no app
+  tables (014+).
+- Cookie harness for later tasks:
+  `sb-<ref>-auth-token=base64-<base64url(JSON session)>` (session =
+  token response + `expires_at` epoch seconds).
 
 ## Task 012 - Database
 

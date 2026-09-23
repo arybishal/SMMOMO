@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 012)
+Last updated: 2026-09-23 (Task 013)
 
 ---
 
@@ -28,6 +28,7 @@ smmomo/
 │       ├── package.json      Workspace "web": dev/build/start/lint/typecheck
 │       ├── tsconfig.json     Strict TS; "@/*" maps to apps/web root
 │       ├── next.config.ts    Next.js config
+│       ├── proxy.ts           Next 16 proxy: cookie session refresh + route guard (app routes → /login?next=, authed off /login|/register)
 │       ├── postcss.config.mjs Tailwind v4 via @tailwindcss/postcss
 │       ├── eslint.config.mjs ESLint (eslint-config-next)
 │       ├── AGENTS.md         Auto-managed Next.js agent rules (do not hand-edit)
@@ -40,8 +41,8 @@ smmomo/
 │       │   ├── favicon.ico
 │       │   ├── (auth)/
 │       │   │   ├── layout.tsx        Auth shell: logo header, centered card area
-│       │   │   ├── login/page.tsx    Sign-in form (mock submit → /dashboard; auth = Task 013)
-│       │   │   └── register/page.tsx Sign-up form (mock submit → /dashboard)
+│       │   │   ├── login/page.tsx    Sign-in form: signInWithPassword, inline errors, safe ?next return to app
+│       │   │   └── register/page.tsx Sign-up form: signUp + name metadata; "Check your email" when confirmation required
 │       │   └── (dashboard)/
 │       │       ├── layout.tsx        Wraps DashboardShell (sidebar + topbar)
 │       │       ├── dashboard/page.tsx       Connection, KPIs, usage, activity, deliveries, automations (+ empty states)
@@ -61,7 +62,8 @@ smmomo/
 │       │       ├── analytics/page.tsx       Server page: KPIs (Dashboard-consistent), 7-day CSS chart + text summary, automation/content performance tables, delivery breakdown + failure records (all via lib/api)
 │       │       └── settings/
 │       │           ├── page.tsx                   Async hub: live lib/api summaries per row (account state, period·DMs)
-│       │           ├── account/page.tsx           Profile + password form (client; Save disabled until auth — Task 013)
+│       │           ├── account/page.tsx           Server page: session getUser → email + name (redirect /login if none)
+│       │           ├── account/account-form.tsx   Client island: Name, Email (readOnly), optional password change → updateUser; Save enabled
 │       │           ├── social-accounts/page.tsx   Instagram 3-state card (connected/error/missing) + Connect/Disconnect disabled (Task 015)
 │       │           └── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
 │       │
@@ -74,7 +76,7 @@ smmomo/
 │       │   └── layout/
 │       │       ├── dashboard-shell.tsx  Client shell: mobile drawer state + sidebar/topbar/main
 │       │       ├── sidebar.tsx          Nav (usePathname active state; closes drawer on navigate)
-│       │       ├── topbar.tsx           Sticky top bar, menu button, connection pill, avatar
+│       │       ├── topbar.tsx           Sticky top bar, menu button, connection pill, real initials + Sign out
 │       │       ├── page-header.tsx      Reusable page title/description/action row
 │       │       └── icons.tsx            Inline SVG icon set (no icon dependency)
 │       │
@@ -82,14 +84,14 @@ smmomo/
 │       │   ├── api/
 │       │   │   ├── client.ts           request() seam: USE_MOCK flag → mock or fetch(API_BASE)
 │       │   │   ├── automations.ts      listAutomations, getAutomation
-│       │   │   ├── posts.ts            listPosts, getPost (USE_MOCK ? mock : Supabase)
+│       │   │   ├── posts.ts            listPosts, getPost (USE_MOCK ? mock : Supabase; awaits async server client)
 │       │   │   ├── social-accounts.ts  listSocialAccounts, getInstagramAccount
 │       │   │   ├── analytics.ts        getAnalyticsSummary
 │       │   │   ├── usage.ts            getUsageSummary
 │       │   │   └── inbox.ts            listRecentComments, listRecentDeliveries
 │       │   ├── supabase/
-│       │   │   ├── client.ts           Browser Supabase client (publishable key, lazy env-checked factory)
-│       │   │   └── server.ts           Server Supabase client (publishable key, no session until Task 013)
+│       │   │   ├── client.ts           Browser Supabase client (@supabase/ssr createBrowserClient, publishable key, lazy env check)
+│       │   │   └── server.ts           Server Supabase client (@supabase/ssr createServerClient, async cookies(), session user)
 │       │   └── mock/
 │       │       ├── accounts.ts         Instagram account mock
 │       │       ├── posts.ts            Posts/reels mock
@@ -140,7 +142,8 @@ smmomo/
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; flip `USE_MOCK`
   to false to switch to the real API (posts branch to Supabase; others to the future API).
-- `apps/web/lib/supabase/` → Browser/server Supabase clients (publishable key only).
+- `apps/web/lib/supabase/` → Browser/server Supabase clients (@supabase/ssr
+  cookie sessions, publishable key only).
 - `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor).
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.
 - `apps/web/types/index.ts` → Shared frontend domain types (match future API contracts).

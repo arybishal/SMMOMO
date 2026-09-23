@@ -1,12 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 // Server-side Supabase client (server components / route handlers).
-// Publishable key only — no service_role key exists in the web app.
-// Sessions/cookies are intentionally not wired yet: authentication is still
-// mock-only (Task 013 adds Supabase auth, likely via @supabase/ssr). Until
-// then every query is anonymous and Row Level Security returns zero private
-// rows — that is the security model working, not a bug.
-export function getServerSupabase() {
+// Cookie-backed session via @supabase/ssr; publishable key only — no
+// service_role/secret key exists in the web app. Row Level Security is
+// the isolation boundary: without a signed-in member, queries return
+// zero private rows.
+export async function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) {
@@ -14,7 +14,22 @@ export function getServerSupabase() {
       "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (see .env.example)",
     );
   }
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
+  const cookieStore = await cookies();
+  return createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        } catch {
+          // Server Components cannot set cookies — proxy.ts refreshes the
+          // session on every request, so token rotation still lands there.
+        }
+      },
+    },
   });
 }
