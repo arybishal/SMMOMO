@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 017 — Automation Engine)
+Last updated: 2026-09-23 (fetch-failed investigation — no source file changes after Task 017)
 
 ---
 

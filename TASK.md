@@ -12,10 +12,40 @@ Last Completed Task: Task 017 - Automation Engine
 
 Next Task: Task 018 - BullMQ Delivery
 
-Last Updated: 2026-09-23 (Task 017)
+Last Updated: 2026-09-23 (fetch-failed investigation after Task 017)
 
-Verification: 2026-09-23 Task 017 validation PASSED — typecheck/lint/
-build:api/build exit 0; signed webhook match → comment
+Verification: 2026-09-23 **`TypeError: fetch failed` investigation PASSED** —
+root cause = Fastify API not listening on `:4000` (stale/zombie `tsx watch`
+`dev:api` processes after prior validation stopped servers; port free while
+Next on `:3000` kept serving). Reproduced: `PORT_4000=False` while
+`PORT_3000=True`; direct `GET http://localhost:4000/health` → connection
+refused (`ECONNREFUSED` 127.0.0.1:4000); undici `fetch` cause =
+`ECONNREFUSED` (connection failure, **not** an HTTP 4xx/5xx); all authed
+dashboard routes 500 with `fetch failed` while API down. Affected requests:
+server-component + client `fetch(`${API_BASE}${path}`)` from
+`apps/web/lib/api/client.ts` (`API_BASE=http://localhost:4000`,
+`USE_MOCK=false`) — every dashboard data path (`/dashboard` analytics +
+social + inbox + automations + usage, `/automations`, `/inbox`, `/analytics`,
+`/posts`, `/settings` + usage + social-accounts). **Task 017 engine not the
+cause** — `runCommentEngine` only runs on the `/webhooks/*` path, never page
+render. Env shape correct (web `NEXT_PUBLIC_API_URL` matches Fastify
+`PORT ?? 4000`; CORS origin `http://localhost:3000`); no port/protocol/path
+mismatch. **Fix = restart API only** (kill stale `dev:api`/`tsx watch`
+processes, `npm run dev:api` with service-role env for webhook path) — **no
+app code change**, no mock flip, no auth bypass, no suppressed errors.
+Regression after fix: typecheck/lint/build:api/build exit 0; API `/health`
+200; node fetch Next→API path OK; authed route sweep 9/9 200; anon
+`/dashboard` 307; API product routes 200 (`/usage/summary` — note `/usage`
+alone is 404, wrong probe path, not a bug); webhook GET verify → 200
+challenge echo, bad signature → 403; no secret **values** in tracked sources
+(only documentation strings mention `sb_secret_`); Task 018 remains
+**NOT STARTED**. Ops note: always leave `npm run dev:api` running beside
+`npm run dev` for local work; prior "servers stopped after validation"
+shutdowns explain the observed error. Next roadmap task: **Task 018 —
+BullMQ Delivery**.
+
+Prior verification (Task 017): 2026-09-23 Task 017 validation PASSED —
+typecheck/lint/build:api/build exit 0; signed webhook match → comment
 matched=true + automation_name=Giveaway Engine + matched_count=1 +
 deliveries private_dm+public_reply queued; duplicate webhook → still
 count=1, delivery_rows=2 (idempotent claim); non-match → matched=false;
@@ -24,8 +54,8 @@ paused automation ignores keyword; case-insensitive contains
 /comments/recent + /deliveries/recent 200 with matched shape (no token
 leak); analytics commentsMatched=2; web /inbox + /dashboard 200, anon
 inbox → login redirect; 0 API level 50/60 errors; secret values clean;
-servers stopped after validation. Next roadmap task: **Task 018 —
-BullMQ Delivery**.
+servers stopped after validation (this shutdown left port 4000 free and
+produced the later `fetch failed` reports — see investigation above).
 
 Prior verification (auth bugfix): 2026-09-23 auth confirmation bugfix PASSED — typecheck/
 lint/build:api/build exit 0; `/auth/confirm` 200 (working state SSR);
@@ -237,6 +267,68 @@ Notes / known limits:
   018 adds repair — document, don't silently double-send).
 - Graph API live send not proven here (no Meta messaging permissions in
   environment) — 018's problem.
+
+## Bug Investigation — `TypeError: fetch failed` (after Task 017)
+
+Status: COMPLETE (2026-09-23). **No code change.** Task 018 remains NOT
+STARTED. Roadmap next remains Task 018.
+
+### Symptom
+
+Next.js runtime / server components logged `TypeError: fetch failed`
+(and browser `Uncaught TypeError: fetch failed` for topbar
+`getInstagramAccount`). Dashboard routes returned 500.
+
+### Root cause (reproduced, not assumed)
+
+**Fastify was not listening on port 4000** while Next continued on 3000.
+State at repro: `PORT_3000=True`, `PORT_4000=False`. Stale `tsx watch` /
+`npm run dev:api` processes were present but not bound (prior validation
+cycles stop servers when done). `GET http://localhost:4000/health` →
+"target machine actively refused it 127.0.0.1:4000". Node `fetch` cause
+code: **`ECONNREFUSED`** — connection failure, distinct from HTTP 401/404/500
+(fetch succeeded). Not caused by Task 017: engine only runs inside
+`/webhooks/*`.
+
+### Affected requests
+
+All UI→API calls through `apps/web/lib/api/client.ts` line 50
+(`fetch(`${API_BASE}${path}`)`), `API_BASE` from
+`NEXT_PUBLIC_API_URL=http://localhost:4000`, `USE_MOCK=false`:
+server pages (`/dashboard`, `/automations`, `/inbox`, `/analytics`,
+`/posts`, `/settings`, `/settings/usage`, `/settings/social-accounts`) and
+client topbar Instagram status. Env/port/protocol aligned with
+`server.ts` `PORT ?? 4000`; CORS origin `http://localhost:3000` OK.
+
+### Fix applied
+
+Operational only: kill stale API processes; start `npm run dev:api` with
+service-role env. **No application code change** — did not flip
+`USE_MOCK`, did not disable auth, did not fake responses, did not bypass
+Fastify, did not weaken security, did not add a generic try/catch to hide
+the error. The error correctly surfaces when the API is down.
+
+### Files
+
+None (docs only: this TASK.md record + Tree.md "Last updated" line).
+
+### Validation
+
+- typecheck / lint / build:api / build exit 0
+- API `/health` 200; node-level Next→API fetch OK
+- Authed route sweep 9/9 → 200; anon `/dashboard` → 307
+- API product routes 200 (`/usage/summary`; bare `/usage` 404 = wrong
+  probe path, route lives at `/usage/summary`)
+- Webhook GET verify → 200 challenge echo; bad signature → 403
+- Tracked secret **value** scan clean (only docs mention `sb_secret_`)
+
+### Ops note
+
+Leave both `npm run dev` (3000) and `npm run dev:api` (4000) running for
+local work. Stopping only the API after validation is what produced this
+bug report.
+
+---
 
 ## Task 016 - Meta Webhooks
 
