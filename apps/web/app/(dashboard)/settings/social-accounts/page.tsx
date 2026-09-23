@@ -16,14 +16,14 @@ export default async function SocialAccountsPage() {
       />
 
       <Card className="flex items-center gap-4 p-5">
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-900 text-white">
+        <span className="flex h-11 w-11 items-center justify-center rounded-pill bg-foreground text-background">
           <IconInstagram className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-900">
+          <p className="text-sm font-medium text-foreground">
             {account ? `@${account.username}` : "Not connected"}
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             {account
               ? `${account.followers.toLocaleString()} followers · since ${new Date(
                   account.connectedAt,
@@ -38,10 +38,10 @@ export default async function SocialAccountsPage() {
         )}
       </Card>
 
-      <div className="mt-4 flex items-center justify-between rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4">
+      <div className="mt-4 flex items-center justify-between rounded-card border border-dashed border-zinc-300 bg-surface-muted p-4">
         <div>
           <p className="text-sm font-medium text-zinc-700">Add another account</p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             Meta OAuth arrives with Task 015 — no fake connect flow yet.
           </p>
         </div>

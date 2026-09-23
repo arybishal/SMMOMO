@@ -50,7 +50,7 @@ export default function NewAutomationPage() {
           The full interactive builder — post picker, keyword editor, message
           composer with <code className="text-xs">{"{{first_name}}"}</code>{" "}
           variables, and activation — arrives with{" "}
-          <span className="font-medium text-zinc-900">Task 006</span>.
+          <span className="font-medium text-foreground">Task 006</span>.
         </p>
       </Card>
     </div>
@@ -74,15 +74,15 @@ function Step({
 }) {
   return (
     <Card className="flex items-start gap-4 p-5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-foreground text-xs font-semibold text-background">
         {number}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtle-foreground">
           {label}
         </p>
-        <p className="mt-0.5 font-medium text-zinc-900">{title}</p>
-        <p className="mt-0.5 text-sm text-zinc-500">{detail}</p>
+        <p className="mt-0.5 font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>
       </div>
       <Badge tone={badgeTone}>{badge}</Badge>
     </Card>

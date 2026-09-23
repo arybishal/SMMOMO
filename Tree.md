@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-23 (Task 003)
 
 ---
 
@@ -29,7 +29,7 @@ smmomo/
 │       ├── app/
 │       │   ├── layout.tsx            Root layout: fonts, metadata ("SMMOMO")
 │       │   ├── page.tsx              Landing page (hero, how-it-works, features, CTA)
-│       │   ├── globals.css           Tailwind entry; single controlled theme (Task 003 adds tokens)
+│       │   ├── globals.css           SMMOMO design-token foundation (@theme: semantic colors, radius, shadow; light theme only)
 │       │   ├── favicon.ico
 │       │   ├── (auth)/
 │       │   │   ├── layout.tsx        Auth shell: logo header, centered card area
@@ -53,10 +53,10 @@ smmomo/
 │       │
 │       ├── components/
 │       │   ├── ui/
-│       │   │   ├── button.tsx        Button + buttonClasses() (Link reuses variant styles)
-│       │   │   ├── card.tsx          Card, CardTitle
-│       │   │   ├── badge.tsx         Badge (tone: success/paused/draft/failed/neutral/info)
-│       │   │   └── input.tsx         Label, Input, Textarea
+│       │   │   ├── button.tsx        Button + buttonClasses() (Link reuses variant styles; token-driven variants)
+│       │   │   ├── card.tsx          Card, CardTitle (rounded-card/border/surface/shadow-card tokens)
+│       │   │   ├── badge.tsx         Badge (tone: success/paused/draft/failed/neutral/info; token-driven)
+│       │   │   └── input.tsx         Label, Input, Textarea (shared field chrome, primary focus ring)
 │       │   └── layout/
 │       │       ├── dashboard-shell.tsx  Client shell: mobile drawer state + sidebar/topbar/main
 │       │       ├── sidebar.tsx          Nav (usePathname active state; closes drawer on navigate)
@@ -90,7 +90,9 @@ smmomo/
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
 │
-├── docs/                     Architecture / API decision records (empty for now)
+├── docs/                     Architecture / API decision records
+│   ├── assets/
+│   │   └── banner.jpg        Hero banner for GitHub README
 │   └── .gitkeep
 │
 ├── tests/                    Cross-app tests (empty for now)
@@ -104,8 +106,10 @@ smmomo/
 
 - `TASK.md` → WHAT is done / in progress / blocked / next. Read before any change.
 - `Tree.md` → WHERE everything is. Keep accurate.
-- `README.md` → General docs: install, run, env vars, architecture.
+- `README.md` → General docs: install, run, env vars, architecture, design system.
 - `package.json` (root) → npm workspaces (`apps/*`, `packages/*`) and top-level scripts.
+- `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
+  shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; flip `USE_MOCK`
   to false to switch to the real API.
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.

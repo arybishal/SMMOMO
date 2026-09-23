@@ -10,11 +10,11 @@ export default function RegisterPage() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-lg font-semibold text-zinc-900">
+      <div className="rounded-card border border-border bg-surface p-8 shadow-card">
+        <h1 className="text-lg font-semibold text-foreground">
           Create your account
         </h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           Start turning comments into conversations.
         </p>
 
@@ -64,9 +64,12 @@ export default function RegisterPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-zinc-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link
+            href="/login"
+            className="font-medium text-primary hover:text-primary-hover"
+          >
             Sign in
           </Link>
         </p>

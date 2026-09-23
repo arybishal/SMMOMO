@@ -39,7 +39,7 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* Mobile backdrop — overlay scrim, intentionally outside the color system */}
       {open && (
         <div
           className="fixed inset-0 z-40 bg-zinc-950/40 md:hidden"
@@ -49,22 +49,22 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-200 bg-white
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-surface
           transition-transform md:translate-x-0
           ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex h-16 items-center justify-between px-5">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-xs font-bold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-control bg-primary text-xs font-bold text-primary-foreground">
               S
             </span>
-            <span className="text-sm font-semibold tracking-tight text-zinc-900">
+            <span className="text-sm font-semibold tracking-tight text-foreground">
               SMMOMO
             </span>
           </Link>
           <button
             type="button"
-            className="text-zinc-500 hover:text-zinc-900 md:hidden"
+            className="text-muted-foreground hover:text-foreground md:hidden"
             onClick={onClose}
             aria-label="Close navigation"
           >
@@ -81,11 +81,11 @@ export function Sidebar({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
+                className={`flex items-center gap-3 rounded-control px-3 py-2 text-sm font-medium transition-colors
                   ${
                     active
-                      ? "bg-indigo-50 text-indigo-700"
-                      : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+                      ? "bg-primary-soft text-primary-strong"
+                      : "text-zinc-600 hover:bg-surface-muted hover:text-foreground"
                   }`}
               >
                 <Icon className="h-4.5 w-4.5 shrink-0" />
@@ -95,8 +95,8 @@ export function Sidebar({
           })}
         </nav>
 
-        <div className="border-t border-zinc-200 px-5 py-4">
-          <p className="text-xs text-zinc-400">V1 — Instagram only</p>
+        <div className="border-t border-border px-5 py-4">
+          <p className="text-xs text-subtle-foreground">V1 — Instagram only</p>
         </div>
       </aside>
     </>

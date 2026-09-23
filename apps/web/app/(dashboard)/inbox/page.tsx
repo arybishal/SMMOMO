@@ -25,19 +25,19 @@ export default async function InboxPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <div className="border-b border-zinc-100 px-5 py-4">
+          <div className="border-b border-border-muted px-5 py-4">
             <CardTitle>Comments</CardTitle>
           </div>
-          <ul className="divide-y divide-zinc-100">
+          <ul className="divide-y divide-border-muted">
             {comments.map((c) => (
               <li key={c.id} className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm text-zinc-900">
+                    <p className="text-sm text-foreground">
                       <span className="font-medium">@{c.username}</span>{" "}
-                      <span className="text-zinc-500">— “{c.text}”</span>
+                      <span className="text-muted-foreground">— “{c.text}”</span>
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-zinc-400">
+                    <p className="mt-0.5 truncate text-xs text-subtle-foreground">
                       {c.automationName
                         ? `→ ${c.automationName}`
                         : "no automation matched"}{" "}
@@ -54,21 +54,21 @@ export default async function InboxPage() {
         </Card>
 
         <Card>
-          <div className="border-b border-zinc-100 px-5 py-4">
+          <div className="border-b border-border-muted px-5 py-4">
             <CardTitle>Deliveries</CardTitle>
           </div>
-          <ul className="divide-y divide-zinc-100">
+          <ul className="divide-y divide-border-muted">
             {deliveries.map((d) => (
               <li key={d.id} className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm text-zinc-900">
+                    <p className="text-sm text-foreground">
                       <span className="font-medium">@{d.recipient}</span>{" "}
-                      <span className="text-zinc-500">
+                      <span className="text-muted-foreground">
                         — {d.kind === "private_dm" ? "Private DM" : "Public reply"}
                       </span>
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-zinc-400">
+                    <p className="mt-0.5 truncate text-xs text-subtle-foreground">
                       {d.error ?? new Date(d.createdAt).toLocaleString()}
                     </p>
                   </div>

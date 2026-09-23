@@ -38,7 +38,7 @@ export default function AccountSettingsPage() {
             <Button type="submit" disabled>
               Save changes
             </Button>
-            <p className="mt-2 text-xs text-zinc-400">
+            <p className="mt-2 text-xs text-subtle-foreground">
               Enabled once authentication lands (Task 013).
             </p>
           </div>

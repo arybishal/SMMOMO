@@ -3,13 +3,13 @@ import Link from "next/link";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50">
+    <div className="flex min-h-screen flex-col bg-surface-muted">
       <header className="flex h-16 items-center px-6">
         <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-control bg-primary text-xs font-bold text-primary-foreground">
             S
           </span>
-          <span className="text-sm font-semibold tracking-tight text-zinc-900">
+          <span className="text-sm font-semibold tracking-tight text-foreground">
             SMMOMO
           </span>
         </Link>

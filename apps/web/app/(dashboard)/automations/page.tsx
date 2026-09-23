@@ -23,8 +23,8 @@ export default async function AutomationsPage() {
       />
 
       <Card className="overflow-hidden">
-        <table className="min-w-full divide-y divide-zinc-100 text-sm">
-          <thead className="bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <table className="min-w-full divide-y divide-border-muted text-sm">
+          <thead className="bg-surface-muted text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-5 py-3">Automation</th>
               <th className="px-5 py-3">Keyword</th>
@@ -34,21 +34,22 @@ export default async function AutomationsPage() {
               <th className="px-5 py-3 text-right">Failed</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 bg-white">
+          <tbody className="divide-y divide-border-muted bg-surface">
             {automations.map((a) => (
-              <tr key={a.id} className="hover:bg-zinc-50/60">
+              <tr key={a.id} className="hover:bg-surface-muted/60">
                 <td className="px-5 py-3.5">
                   <Link
                     href={`/automations/${a.id}`}
-                    className="font-medium text-zinc-900 hover:text-indigo-600"
+                    className="font-medium text-foreground hover:text-primary"
                   >
                     {a.name}
                   </Link>
-                  <p className="max-w-md truncate text-xs text-zinc-400">
+                  <p className="max-w-md truncate text-xs text-subtle-foreground">
                     {a.postCaption}
                   </p>
                 </td>
                 <td className="px-5 py-3.5">
+                  {/* Keyword chip: direct zinc utilities are fine for one-off code styling */}
                   <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                     {a.keyword}
                   </code>
@@ -74,7 +75,7 @@ export default async function AutomationsPage() {
                 </td>
                 <td
                   className={`px-5 py-3.5 text-right tabular-nums ${
-                    a.failedCount > 0 ? "text-red-600" : "text-zinc-400"
+                    a.failedCount > 0 ? "text-danger" : "text-subtle-foreground"
                   }`}
                 >
                   {a.failedCount}

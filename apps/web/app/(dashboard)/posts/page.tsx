@@ -16,7 +16,7 @@ export default async function PostsPage() {
         {posts.map((post) => (
           <div
             key={post.id}
-            className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
+            className="overflow-hidden rounded-card border border-border bg-surface shadow-card"
           >
             {/* No remote images yet: neutral media placeholder keeps the app
                 offline-friendly until real post media comes from the API. */}
@@ -24,10 +24,10 @@ export default async function PostsPage() {
               <Badge tone="neutral">{post.type}</Badge>
             </div>
             <div className="p-4">
-              <p className="line-clamp-2 min-h-10 text-sm text-zinc-800">
+              <p className="line-clamp-2 min-h-10 text-sm text-foreground">
                 {post.caption}
               </p>
-              <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+              <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                 <span>{post.commentsCount} comments</span>
                 <span>{post.likesCount.toLocaleString()} likes</span>
               </div>

@@ -2,18 +2,23 @@ import type { ButtonHTMLAttributes } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
+// Shared interaction language: tokenized colors, control radius,
+// visible keyboard focus (outline-2 + offset), disabled opacity, color transition.
 const variants: Record<Variant, string> = {
   primary:
-    "bg-indigo-600 text-white hover:bg-indigo-500 focus-visible:outline-indigo-600",
+    "bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:outline-primary",
   secondary:
-    "bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-50 focus-visible:outline-zinc-400",
-  ghost: "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-zinc-400",
-  danger: "bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600",
+    "bg-surface text-foreground ring-1 ring-border hover:bg-surface-muted focus-visible:outline-subtle-foreground",
+  // zinc-600/zinc-100 are intermediate greys with no semantic token (see README).
+  ghost:
+    "text-zinc-600 hover:bg-neutral-soft hover:text-foreground focus-visible:outline-subtle-foreground",
+  danger:
+    "bg-danger text-danger-foreground hover:bg-danger-hover focus-visible:outline-danger",
 };
 
 export function buttonClasses(variant: Variant = "primary"): string {
   return [
-    "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium",
+    "inline-flex items-center justify-center gap-2 rounded-control px-3.5 py-2 text-sm font-medium",
     "focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors",
     "disabled:pointer-events-none disabled:opacity-50",
     variants[variant],

@@ -10,9 +10,9 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-lg font-semibold text-zinc-900">Welcome back</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+      <div className="rounded-card border border-border bg-surface p-8 shadow-card">
+        <h1 className="text-lg font-semibold text-foreground">Welcome back</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Sign in to manage your automations.
         </p>
 
@@ -38,7 +38,9 @@ export default function LoginPage() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
-              <span className="text-xs text-zinc-400">Forgot password?</span>
+              <span className="text-xs text-subtle-foreground">
+                Forgot password?
+              </span>
             </div>
             <Input
               id="password"
@@ -54,9 +56,12 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-zinc-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           No account?{" "}
-          <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link
+            href="/register"
+            className="font-medium text-primary hover:text-primary-hover"
+          >
             Create one
           </Link>
         </p>

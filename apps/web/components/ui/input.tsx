@@ -9,17 +9,19 @@ export function Label(props: LabelHTMLAttributes<HTMLLabelElement>) {
   );
 }
 
+// Shared field chrome: surface + control radius + primary focus ring.
+// ring-zinc-300 is the control border (one step stronger than card borders);
+// placeholder uses the subtle text token.
+const fieldClasses = `block w-full rounded-control border-0 bg-surface px-3 py-2 text-sm text-foreground
+  ring-1 ring-inset ring-zinc-300 placeholder:text-subtle-foreground
+  focus:ring-2 focus:ring-inset focus:ring-primary`;
+
 export function Input({
   className = "",
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <input
-      className={`block w-full rounded-md border-0 bg-white px-3 py-2 text-sm text-zinc-900
-        ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400
-        focus:ring-2 focus:ring-inset focus:ring-indigo-600 ${className}`}
-      {...props}
-    />
+    <input className={`${fieldClasses} ${className}`} {...props} />
   );
 }
 
@@ -28,11 +30,6 @@ export function Textarea({
   ...props
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <textarea
-      className={`block w-full rounded-md border-0 bg-white px-3 py-2 text-sm text-zinc-900
-        ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400
-        focus:ring-2 focus:ring-inset focus:ring-indigo-600 ${className}`}
-      {...props}
-    />
+    <textarea className={`${fieldClasses} ${className}`} {...props} />
   );
 }

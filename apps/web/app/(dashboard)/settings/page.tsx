@@ -37,15 +37,15 @@ export default function SettingsPage() {
           const Icon = s.icon;
           return (
             <Link key={s.href} href={s.href}>
-              <Card className="flex items-center gap-4 p-4 transition-colors hover:bg-zinc-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-100 text-zinc-600">
+              <Card className="flex items-center gap-4 p-4 transition-colors hover:bg-surface-muted">
+                <span className="flex h-9 w-9 items-center justify-center rounded-control bg-zinc-100 text-zinc-600">
                   <Icon className="h-4.5 w-4.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-zinc-900">{s.title}</p>
-                  <p className="text-xs text-zinc-500">{s.detail}</p>
+                  <p className="text-sm font-medium text-foreground">{s.title}</p>
+                  <p className="text-xs text-muted-foreground">{s.detail}</p>
                 </div>
-                <IconArrowRight className="h-4 w-4 text-zinc-400" />
+                <IconArrowRight className="h-4 w-4 text-subtle-foreground" />
               </Card>
             </Link>
           );

@@ -37,20 +37,20 @@ const features = [
 
 export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-background">
       <header className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-6">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-control bg-primary text-xs font-bold text-primary-foreground">
             S
           </span>
-          <span className="text-sm font-semibold tracking-tight text-zinc-900">
+          <span className="text-sm font-semibold tracking-tight text-foreground">
             SMMOMO
           </span>
         </div>
         <nav className="flex items-center gap-2 sm:gap-4">
           <Link
             href="/login"
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
+            className="text-sm font-medium text-zinc-600 hover:text-foreground"
           >
             Sign in
           </Link>
@@ -63,13 +63,13 @@ export default function LandingPage() {
       <main className="flex-1">
         {/* Hero */}
         <section className="mx-auto max-w-3xl px-6 pb-20 pt-16 text-center sm:pt-24">
-          <p className="text-sm font-medium text-indigo-600">
+          <p className="text-sm font-medium text-primary">
             Instagram Comment → Private DM
           </p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-zinc-900 sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
             Turn comments into conversations
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-zinc-500">
+          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
             SMMOMO replies to Instagram comments with an automated private
             message — links, PDFs, resources — the moment someone uses your
             keyword.
@@ -89,15 +89,15 @@ export default function LandingPage() {
             {steps.map((s, i) => (
               <div
                 key={s.title}
-                className="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-left"
+                className="rounded-card border border-border bg-surface-muted p-5 text-left"
               >
-                <span className="text-xs font-semibold text-indigo-600">
+                <span className="text-xs font-semibold text-primary">
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <p className="mt-2 text-sm font-semibold text-zinc-900">
+                <p className="mt-2 text-sm font-semibold text-foreground">
                   {s.title}
                 </p>
-                <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   {s.detail}
                 </p>
               </div>
@@ -106,14 +106,14 @@ export default function LandingPage() {
         </section>
 
         {/* Features */}
-        <section className="border-t border-zinc-100 bg-zinc-50">
+        <section className="border-t border-border-muted bg-surface-muted">
           <div className="mx-auto grid max-w-5xl gap-8 px-6 py-16 sm:grid-cols-3">
             {features.map((f) => (
               <div key={f.title}>
-                <h3 className="text-sm font-semibold text-zinc-900">
+                <h3 className="text-sm font-semibold text-foreground">
                   {f.title}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {f.detail}
                 </p>
               </div>
@@ -123,7 +123,7 @@ export default function LandingPage() {
 
         {/* CTA */}
         <section className="mx-auto max-w-3xl px-6 py-16 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
             Set up your first automation in minutes
           </h2>
           <div className="mt-6">
@@ -135,8 +135,8 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-zinc-100 py-8">
-        <p className="text-center text-xs text-zinc-400">
+      <footer className="border-t border-border-muted py-8">
+        <p className="text-center text-xs text-subtle-foreground">
           © 2026 SMMOMO. Instagram automation, done right.
         </p>
       </footer>

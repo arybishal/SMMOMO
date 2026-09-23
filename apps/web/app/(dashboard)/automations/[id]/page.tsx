@@ -40,28 +40,28 @@ export default async function AutomationDetailPage({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Matched
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
             {automation.matchedCount}
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             DMs sent
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
             {automation.dmSentCount}
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Failed
           </p>
           <p
             className={`mt-1 text-2xl font-semibold tabular-nums ${
-              automation.failedCount > 0 ? "text-red-600" : "text-zinc-900"
+              automation.failedCount > 0 ? "text-danger" : "text-foreground"
             }`}
           >
             {automation.failedCount}
@@ -73,6 +73,7 @@ export default async function AutomationDetailPage({
         <Card className="p-5">
           <CardTitle>IF — keyword</CardTitle>
           <p className="mt-2">
+            {/* Direct zinc utilities kept for one-off code-chip styling */}
             <code className="rounded bg-zinc-100 px-2 py-1 text-sm font-medium text-zinc-800">
               {automation.keyword}
             </code>
@@ -93,7 +94,9 @@ export default async function AutomationDetailPage({
               {automation.publicReply}
             </p>
           ) : (
-            <p className="mt-2 text-sm text-zinc-400">No public reply.</p>
+            <p className="mt-2 text-sm text-subtle-foreground">
+              No public reply.
+            </p>
           )}
         </Card>
       </div>

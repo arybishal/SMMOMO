@@ -26,7 +26,8 @@ export default async function AnalyticsPage() {
 
       <Card className="mt-6 p-5">
         <CardTitle>Last 7 days</CardTitle>
-        {/* Pure CSS bars — no chart library until real analytics justify one. */}
+        {/* Pure CSS bars — no chart library until real analytics justify one.
+            Series colors stay direct indigo utilities (data-viz specific). */}
         <div className="mt-6 flex h-48 items-end gap-3">
           {stats.daily.map((d) => (
             <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
@@ -42,11 +43,11 @@ export default async function AnalyticsPage() {
                   title={`${d.dms} DMs`}
                 />
               </div>
-              <span className="text-xs text-zinc-500">{d.label}</span>
+              <span className="text-xs text-muted-foreground">{d.label}</span>
             </div>
           ))}
         </div>
-        <div className="mt-4 flex gap-4 text-xs text-zinc-500">
+        <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm bg-indigo-500" /> Comments
             matched
@@ -71,12 +72,12 @@ function Kpi({
 }) {
   return (
     <Card className="p-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       <p
         className={`mt-2 text-2xl font-semibold tabular-nums ${
-          danger ? "text-red-600" : "text-zinc-900"
+          danger ? "text-danger" : "text-foreground"
         }`}
       >
         {value.toLocaleString()}

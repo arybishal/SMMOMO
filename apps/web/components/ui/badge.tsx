@@ -1,14 +1,17 @@
 import type { ReactNode } from "react";
 
+// Public tone API preserved from Task 002 — pages keep passing these names.
+// Visuals come from design-system tokens: soft background + strong text +
+// base color at 20% via the /20 opacity modifier (ring-{status}/20).
 type Tone = "success" | "paused" | "draft" | "failed" | "neutral" | "info";
 
 const tones: Record<Tone, string> = {
-  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  paused: "bg-amber-50 text-amber-700 ring-amber-600/20",
-  draft: "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
-  failed: "bg-red-50 text-red-700 ring-red-600/20",
-  neutral: "bg-zinc-100 text-zinc-700 ring-zinc-500/20",
-  info: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
+  success: "bg-success-soft text-success-strong ring-success/20",
+  paused: "bg-warning-soft text-warning-strong ring-warning/20",
+  draft: "bg-neutral-soft text-neutral-strong ring-neutral/20",
+  failed: "bg-danger-soft text-danger-strong ring-danger/20",
+  neutral: "bg-neutral-soft text-neutral-strong ring-neutral/20",
+  info: "bg-info-soft text-info-strong ring-info/20",
 };
 
 export function Badge({
@@ -20,7 +23,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${tones[tone]}`}
+      className={`inline-flex items-center rounded-pill px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${tones[tone]}`}
     >
       {children}
     </span>

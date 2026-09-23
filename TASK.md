@@ -6,11 +6,11 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 002 - Frontend Application Shell (COMPLETE)
+Current Task: Task 003 - Design System (COMPLETE)
 
-Last Completed Task: Task 002 - Frontend Application Shell
+Last Completed Task: Task 003 - Design System
 
-Next Task: Task 003 - Design System
+Next Task: Task 004 - Dashboard
 
 Last Updated: 2026-09-23
 
@@ -40,7 +40,7 @@ Last Updated: 2026-09-23
 |---|---|---|
 | 001 | Project Initialization | COMPLETE |
 | 002 | Frontend Application Shell | COMPLETE |
-| 003 | Design System | NOT STARTED |
+| 003 | Design System | COMPLETE |
 | 004 | Dashboard | NOT STARTED |
 | 005 | Automation List | NOT STARTED |
 | 006 | Automation Builder | NOT STARTED |
@@ -70,33 +70,117 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 003 - Design System
+## Task 004 - Dashboard
 
 Status: NOT STARTED
 
 ### Objective
 
-Formalize SMMOMO's visual foundation so later feature work builds on tokens,
-not ad-hoc Tailwind values.
+Take the Task 002 dashboard page from first-pass to finished: better hierarchy,
+empty-state handling, and depth that matches what a daily user needs.
 
 ### Requirements
 
-- Design tokens in `globals.css` (`@theme`): color scale, spacing, radii, shadows
-- Consolidate current zinc/indigo one-offs where repetition exists
-- Typography scale (headings/body) consistent across pages
-- Dark-mode decision: either implement properly with tokens or explicitly defer
-- Document token usage in README or docs
-- Do not restyle for its own sake — preserve the current clean SaaS feel
+- Refine the dashboard page (`app/(dashboard)/dashboard/page.tsx`) in place —
+  it is already data-driven; improve depth, do not rebuild.
+- Empty states: no connected account, no automations, no posts — clear
+  next-action copy with a CTA linking to the right route.
+- Usage snapshot card: reuse `getUsageSummary()` (already in `lib/api/usage.ts`)
+  so usage is visible on the home screen, not only `/settings/usage`.
+- Recent activity: show delivery status alongside comments (delivery result
+  join from `lib/api/inbox.ts` mock data) so failures are visible at a glance.
+- Keep tokens/primitives (`components/ui/*`, `@theme` classes) — no new raw
+  palette values. No chart library.
+- Mock-only: no backend, no new deps.
 
 ### Notes
 
-- Current palette: zinc neutrals + indigo-600 accent + status colors (emerald/amber/red)
-  via `components/ui/badge.tsx`.
-- Buttons/inputs/cards already centralized in `components/ui/`.
+- Dashboard shell, sidebar, topbar are done (Task 002) and tokenized
+  (Task 003). Only the page body changes here.
 
 ---
 
 # Completed Tasks
+
+## Task 003 - Design System
+
+Status: COMPLETE
+
+Completed:
+
+- Semantic `@theme` token layer in `apps/web/app/globals.css`: surfaces, text,
+  primary/danger/success/warning families (each with `-soft`/`-strong`/
+  `-foreground`), `info` aliasing primary, `neutral-soft`/`neutral-strong`,
+  `border`/`border-muted`. Palette copied 1:1 from Tailwind v4 `theme.css`
+  oklch values — no visual color shift.
+- Radius tokens: `rounded-control` (0.375rem), `rounded-card` (0.5rem),
+  `rounded-pill` (9999px). Shadow token: `shadow-card` (= v4 `shadow-sm` value).
+- Geist fonts wired via `--font-sans`/`--font-mono`; typography hierarchy
+  documented in README (titles / body / meta / metrics).
+- Dark media block removed — light-only, explicitly deferred (README + Deferred).
+- Migrated all UI primitives: `button.tsx` (tokenized variants,
+  `rounded-control`), `card.tsx` (`rounded-card border-border bg-surface
+  shadow-card`), `badge.tsx` (token tones, `rounded-pill`, `ring-{status}/20`),
+  `input.tsx` (shared field chrome, `ring-primary` focus).
+- Migrated layout components: `sidebar.tsx`, `topbar.tsx`, `page-header.tsx`,
+  `dashboard-shell.tsx`.
+- Migrated every page: landing, auth (layout/login/register), dashboard,
+  automations (list/new/[id]), posts, inbox, analytics, settings (index +
+  account/social-accounts/usage).
+- README gained a Design System section (tokens, radius/shadow, typography,
+  badge tones, raw-value exceptions, dark-mode deferral rule).
+
+What it does:
+
+Establishes one token source of truth. Future features (Tasks 004–010) style
+against semantic classes, so palette or radius changes become one-line edits in
+`globals.css` instead of a repo-wide find-replace.
+
+Files (key):
+
+- apps/web/app/globals.css (rewritten — @theme token foundation)
+- apps/web/components/ui/{button,card,badge,input}.tsx
+- apps/web/components/layout/{sidebar,topbar,page-header,dashboard-shell}.tsx
+- apps/web/app/page.tsx + app/(auth)/* + app/(dashboard)/*/page.tsx (all pages)
+- README.md (Design System section), Tree.md, TASK.md
+
+Technical decisions:
+
+- Semantic tokens (not palette dumps): e.g. `surface-muted` = zinc-50, not
+  `zinc-50` used directly — components never name a palette step.
+- Badge rings via opacity modifier `ring-success/20` instead of 6 extra ring
+  tokens.
+- Deliberate keep-as-literal (documented in README): intermediate greys
+  (zinc-600/700), keyword chips `bg-zinc-100`, input ring `ring-zinc-300`,
+  chart indigo, gradient placeholders, sidebar scrim `bg-zinc-950/40`.
+- Documented micro-shifts: draft badge zinc-600 → `neutral-strong` (zinc-700);
+  topbar dot emerald-500 → `success` (emerald-600); body default zinc-950 →
+  `foreground` (zinc-900). Structure/layout unchanged everywhere.
+- Dark mode deferred (not implemented): second token set later, no `dark:`
+  utilities sprinkled meanwhile.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (15 routes).
+- Built-CSS check: all token custom properties and utilities present in the
+  emitted stylesheet (`--color-primary`, `.rounded-card`, `.shadow-card`,
+  `.ring-success\/20`, `.divide-border-muted`, `var(--font-geist-sans)`, …).
+- Dev-server smoke test: all 14 routes → HTTP 200.
+- Visual verification: limited to the above (no browser automation in this
+  environment). Token values are 1:1 copies of the Tailwind palette the pages
+  already used, and no layout/copy/structure changed — owner eyeball pass
+  recommended before heavy design work.
+
+Known limitations:
+
+- Light theme only (intentional — see Deferred).
+- A handful of context-specific raw values remain by design (README list).
+
+Next:
+
+Task 004 - Dashboard
 
 ## Task 002 - Frontend Application Shell
 
@@ -236,8 +320,9 @@ None.
 
 - Payments/billing — V1 free during testing; usage tracking only (master prompt §34).
   Will surface as part of Task 019 unless the owner requests otherwise.
-- Dark mode — deferred inside Task 003 until proper tokens exist (globals.css currently
-  forces light theme so UI never lands half-styled).
+- Dark mode — deferred by decision in Task 003 (token layer is light-only).
+  Ships as a coordinated second token pass in `globals.css` plus component
+  review — not piecemeal `dark:` utilities. Documented in README.
 
 ---
 
@@ -250,6 +335,9 @@ None.
 - **2026-09-23** — explicit prop typing (not generated `LayoutProps`/`PageProps`) so
   typecheck works without a prior build.
 - **2026-09-23** — no icon/chart/image dependencies yet; inline SVG + CSS only.
+- **2026-09-23** — Task 003: semantic `@theme` tokens in `globals.css` are the
+  single style source; UI uses token classes, light-only palette copied 1:1 from
+  Tailwind v4 oklch theme (zero visual shift by construction).
 
 ---
 

@@ -20,10 +20,10 @@ export default async function UsageSettingsPage() {
       />
 
       <Card>
-        <div className="border-b border-zinc-100 px-5 py-4">
+        <div className="border-b border-border-muted px-5 py-4">
           <CardTitle>This period</CardTitle>
         </div>
-        <ul className="divide-y divide-zinc-100">
+        <ul className="divide-y divide-border-muted">
           {rows.map((r) => (
             <li
               key={r.label}
@@ -33,8 +33,8 @@ export default async function UsageSettingsPage() {
               <span
                 className={`font-medium tabular-nums ${
                   r.label === "Failed deliveries" && r.value > 0
-                    ? "text-red-600"
-                    : "text-zinc-900"
+                    ? "text-danger"
+                    : "text-foreground"
                 }`}
               >
                 {r.value.toLocaleString()}
@@ -44,7 +44,7 @@ export default async function UsageSettingsPage() {
         </ul>
       </Card>
 
-      <p className="mt-4 text-xs text-zinc-400">
+      <p className="mt-4 text-xs text-subtle-foreground">
         Usage feeds future billing. No payment integration in V1.
       </p>
     </div>

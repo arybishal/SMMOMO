@@ -1,29 +1,78 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #09090b;
-}
+/* SMMOMO design tokens — Tailwind CSS v4 @theme.
+   Semantic tokens only; raw zinc/indigo/emerald/amber/red utilities remain
+   available for one-off, context-specific values (see README → Design System).
+   Palette values are copied 1:1 from Tailwind v4's theme.css (oklch) so the
+   token migration does not shift any colors.
+   Light theme only — dark mode intentionally deferred (README). */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+@theme {
+  /* ---- Surfaces ---- */
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: oklch(98.5% 0 none); /* zinc-50: app canvas, muted panels */
+  --color-border: oklch(92% 0.004 286.32); /* zinc-200: cards, chrome */
+  --color-border-muted: oklch(96.7% 0.001 286.375); /* zinc-100: in-card dividers */
+
+  /* ---- Text hierarchy ---- */
+  --color-foreground: oklch(21% 0.006 285.885); /* zinc-900: primary text */
+  --color-muted-foreground: oklch(55.2% 0.016 285.938); /* zinc-500: secondary text */
+  --color-subtle-foreground: oklch(70.5% 0.015 286.067); /* zinc-400: meta/tertiary text */
+
+  /* ---- Primary (indigo) ---- */
+  --color-primary: oklch(51.1% 0.262 276.966); /* indigo-600 */
+  --color-primary-hover: oklch(58.5% 0.233 277.117); /* indigo-500 */
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: oklch(96.2% 0.018 272.314); /* indigo-50: active nav, chips */
+  --color-primary-strong: oklch(45.7% 0.24 277.023); /* indigo-700: text on soft */
+
+  /* ---- Danger (red) ---- */
+  --color-danger: oklch(57.7% 0.245 27.325); /* red-600 */
+  --color-danger-hover: oklch(63.7% 0.237 25.331); /* red-500 */
+  --color-danger-foreground: #ffffff;
+  --color-danger-soft: oklch(97.1% 0.013 17.38); /* red-50 */
+  --color-danger-strong: oklch(50.5% 0.213 27.518); /* red-700 */
+
+  /* ---- Success (emerald) ---- */
+  --color-success: oklch(59.6% 0.145 163.225); /* emerald-600 */
+  --color-success-foreground: #ffffff;
+  --color-success-soft: oklch(97.9% 0.021 166.113); /* emerald-50 */
+  --color-success-strong: oklch(50.8% 0.118 165.612); /* emerald-700 */
+
+  /* ---- Warning (amber) ---- */
+  --color-warning: oklch(66.6% 0.179 58.318); /* amber-600 */
+  --color-warning-foreground: #ffffff;
+  --color-warning-soft: oklch(98.7% 0.022 95.277); /* amber-50 */
+  --color-warning-strong: oklch(55.5% 0.163 48.998); /* amber-700 */
+
+  /* ---- Info — aliases of primary (SMMOMO info == indigo) ---- */
+  --color-info: var(--color-primary);
+  --color-info-hover: var(--color-primary-hover);
+  --color-info-foreground: var(--color-primary-foreground);
+  --color-info-soft: var(--color-primary-soft);
+  --color-info-strong: var(--color-primary-strong);
+
+  /* ---- Neutral chips (zinc) ---- */
+  --color-neutral: oklch(55.2% 0.016 285.938); /* zinc-500: ring base only */
+  --color-neutral-soft: oklch(96.7% 0.001 286.375); /* zinc-100 */
+  --color-neutral-strong: oklch(37% 0.013 285.805); /* zinc-700 */
+
+  /* ---- Typography (Geist wired from next/font in layout.tsx) ---- */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-/* Single controlled theme for now; full design tokens land in Task 003.
-   Auto dark-mode switching was removed so the UI never lands in a
-   half-styled dark state before dark tokens exist. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #ffffff;
-    --foreground: #09090b;
-  }
+  /* ---- Radius: control / card / pill ---- */
+  --radius-control: 0.375rem; /* buttons, inputs, chips (was rounded-md) */
+  --radius-card: 0.5rem; /* cards, panels (was rounded-lg) */
+  --radius-pill: 9999px; /* badges, avatars, dots (was rounded-full) */
+
+  /* ---- Shadows: one subtle elevation ---- */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-background);
+  color: var(--color-foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
