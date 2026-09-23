@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { restService, serviceEnabled } from "./supabase";
 import { runCommentEngine } from "./engine";
 import { getMetaConfig } from "./platform-config";
+import { recordUsageEvent } from "./usage";
 
 // Meta webhooks (Task 016): GET verify handshake + POST signature-checked
 // comment events → comments table. Meta servers have no session cookie —
@@ -166,6 +167,20 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         const outcome = await persistComment(workspaceId, igUserId, change.value, req.log);
         if (outcome === "failed") failures.push(change.value.comment_id ?? "?");
         if (outcome === "inserted" || outcome === "duplicate") {
+          // Usage: only first insert is a real receive (Meta retries → duplicate
+          // → no second event; unique key also enforces this).
+          if (outcome === "inserted" && change.value.comment_id) {
+            const usage = await recordUsageEvent({
+              workspaceId,
+              eventType: "comment_received",
+              source: "webhook",
+              referenceType: "comment",
+              referenceId: change.value.comment_id,
+            });
+            if (usage === "failed") {
+              req.log.error({ igUserId, commentId: change.value.comment_id }, "usage: comment_received record failed");
+            }
+          }
           // Engine is idempotent (claim on matched=false) — safe on Meta retries.
           const engine = await runCommentEngine(
             workspaceId,

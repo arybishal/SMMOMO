@@ -9,6 +9,7 @@ import {
 import { registerMetaRoutes } from "./meta";
 import { registerWebhookRoutes } from "./webhooks";
 import { registerAdminRoutes } from "./admin";
+import { getWorkspaceUsage, parseUsageRange } from "./usage";
 
 // Keep aligned with apps/api/package.json "version" when bumping.
 const SERVICE = "smmomo-api";
@@ -421,11 +422,53 @@ export async function buildApp() {
     return mapSocialAccount(row);
   });
 
-  // --- analytics / usage -----------------------------------------------------
-  // Derived only from automations lifetime counters (real columns). No
-  // deliveries/comments tables yet (016–019) — those metrics stay 0 and
-  // `daily` stays empty so the UI's honest empty-chart branch renders.
+  // --- usage (Task 019) ------------------------------------------------------
+  // Authority: usage_events (idempotent product usage), not automations
+  // lifetime counters. Optional start/end (ISO date); defaults to current
+  // UTC calendar month. Workspace comes from the session — never from query.
+  app.get<{
+    Querystring: { start?: string; end?: string };
+  }>("/usage/summary", async (req, reply) => {
+    const range = parseUsageRange(req.query.start, req.query.end);
+    if (!range.ok) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: range.message,
+      });
+    }
+    const user = authed(req);
+    const summary = await getWorkspaceUsage(user, range.start, range.end);
+    if (!summary) {
+      throw Object.assign(new Error("failed to load usage"), {
+        statusCode: 502,
+      });
+    }
+    const t = summary.totals;
+    return {
+      period: range.label,
+      start: summary.start,
+      end: summary.end,
+      // Existing UsageSummary contract (UI keeps working) + real event totals.
+      dmsSent: t.private_dm_sent,
+      commentsProcessed: t.comment_received,
+      publicReplies: t.public_reply_sent,
+      failedDeliveries: t.private_dm_failed + t.public_reply_failed,
+      commentsReceived: t.comment_received,
+      commentsMatched: t.comment_matched,
+      privateDmFailed: t.private_dm_failed,
+      publicReplyFailed: t.public_reply_failed,
+      byEventType: t,
+      // No plan system in V1 — never invent a limit.
+      used: summary.used,
+      limit: summary.limit,
+      remaining: summary.remaining,
+    };
+  });
 
+  // --- analytics -------------------------------------------------------------
+  // Authority: automations lifetime counters (product reporting). Usage
+  // events own billing metrics — do not conflate the two.
   app.get("/analytics/summary", async (req) => {
     const result = await rest<AutomationCounters[]>(
       authed(req),
@@ -444,28 +487,6 @@ export async function buildApp() {
       failedDeliveries: sum(rows, "failed_count"),
       activeAutomations: rows.filter((r) => r.status === "active").length,
       daily: [],
-    };
-  });
-
-  app.get("/usage/summary", async (req) => {
-    const result = await rest<AutomationCounters[]>(
-      authed(req),
-      "automations?select=matched_count,dm_sent_count,failed_count",
-    );
-    if (result.status >= 400) {
-      throw Object.assign(new Error("failed to load usage"), {
-        statusCode: 502,
-      });
-    }
-    const rows = result.data ?? [];
-    return {
-      // Counters are lifetime values (no per-period event table yet) —
-      // label says so instead of pretending to be a calendar month.
-      period: "All time",
-      dmsSent: sum(rows, "dm_sent_count"),
-      commentsProcessed: 0,
-      publicReplies: 0,
-      failedDeliveries: sum(rows, "failed_count"),
     };
   });
 

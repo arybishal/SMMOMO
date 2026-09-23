@@ -10,22 +10,27 @@ export default async function UsageSettingsPage() {
   const rows = [
     {
       label: "DMs sent",
-      hint: "Automated private messages sent to commenters.",
+      hint: "Private messages Meta accepted this period (billable metric).",
       value: usage.dmsSent,
     },
     {
-      label: "Comments processed",
-      hint: "Comments evaluated against your automations.",
+      label: "Comments received",
+      hint: "Unique Instagram comments ingested via webhook.",
       value: usage.commentsProcessed,
     },
     {
+      label: "Comments matched",
+      hint: "Comments that triggered an automation keyword.",
+      value: usage.commentsMatched ?? 0,
+    },
+    {
       label: "Public replies",
-      hint: "Public comment replies posted.",
+      hint: "Public comment replies Meta accepted.",
       value: usage.publicReplies,
     },
     {
       label: "Failed deliveries",
-      hint: "Messages that could not be sent.",
+      hint: "Permanent send failures (retries not counted until final).",
       value: usage.failedDeliveries,
     },
   ];
@@ -89,7 +94,8 @@ export default async function UsageSettingsPage() {
       )}
 
       <p className="mt-4 text-xs text-subtle-foreground">
-        Usage feeds future billing. No payment integration in V1.
+        Usage is recorded from real product events (idempotent — Meta retries
+        do not double-count). No plan limits or payments in V1.
       </p>
     </div>
   );

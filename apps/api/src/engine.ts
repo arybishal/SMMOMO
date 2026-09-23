@@ -1,5 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { restService } from "./supabase";
+import { recordUsageEvent } from "./usage";
 
 // Task 017: comment → keyword match engine. Runs inline on webhook persist
 // (no Redis/BullMQ in this environment — 018 owns the queue + Graph send).
@@ -85,6 +86,18 @@ export async function runCommentEngine(
     return "failed";
   }
   if (!claim.data?.length) return "already";
+
+  // Usage: only the winning claim is a real match (webhook retries → already).
+  const usage = await recordUsageEvent({
+    workspaceId,
+    eventType: "comment_matched",
+    source: "engine",
+    referenceType: "comment",
+    referenceId: igCommentId,
+  });
+  if (usage === "failed") {
+    log.error({ igCommentId }, "usage: comment_matched record failed");
+  }
 
   // Counter: claim gate means this comment increments once. Read-modify-write
   // is enough at this scale (ponytail: no RPC; race across two different

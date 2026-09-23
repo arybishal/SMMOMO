@@ -8,30 +8,33 @@ Current Phase: Frontend Foundation
 
 Current Task: Task 019 - Usage Tracking
 
-Last Completed Task: Task 018A - Secure Admin Meta Configuration
+Last Completed Task: Task 019 - Usage Tracking
 
-Next Task: Task 019 - Usage Tracking
+Next Task: Task 020 - Security Hardening
 
-Last Updated: 2026-09-23 (Task 018A)
+Last Updated: 2026-09-23 (Task 019)
 
-Verification: 2026-09-23 Task 018A validation PASSED — typecheck/lint/
-build:api/build exit 0; migration `20260923210000_platform_settings.sql`
-APPLIED via `supabase db push` (single-row `platform_settings`, RLS on
-with **no** policies — service-role only); admin gate = `PLATFORM_ADMIN_EMAILS`
-env (server-side after session preHandler); AES-256-GCM encrypt of App
-Secret + webhook verify token under `PLATFORM_ENCRYPTION_KEY`;
-**anon GET admin → 401**; **non-admin GET/PUT/test → 403**; admin GET
-returns only `configured` flags + `source=db|env` (no plaintext);
-PUT save → DB row ciphertext `v1.…` (not plaintext); after save
-webhook GET verify uses **DB token** (200) while wrong token → 403;
-POST HMAC with **DB App Secret** → 200, bad sig → 403; OAuth connect
-→ 302 with `client_id` from resolved config; product route sweep
-8/8 200; Settings hub + `/settings/integrations` → 200 for admin
-(no secret leak in HTML), non-admin → redirect `/settings` and hub
-hides Integrations row, anon → login redirect; end-user JWT on
-`platform_settings` → empty `[]` (RLS); production build + repo
-secret-value scan clean (0 hits); DB test markers cleared → env
-fallback webhook verify 200 again; Task 019 next.
+Verification: 2026-09-23 Task 019 validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260923220000_usage_events.sql`
+APPLIED via `supabase db push`; `usage_events` table with unique
+(workspace_id, event_type, idempotency_key) + member SELECT RLS (no
+`using (true)`); `recordUsageEvent` service-role only (never browser);
+hooks wired: webhook `comment_received` (inserted only — duplicate POST
+→ 1 row), engine `comment_matched` (winning claim only), delivery
+`private_dm_sent`/`private_dm_failed`/`public_reply_sent`/
+`public_reply_failed` (terminal outcomes only — requeue retries not
+counted); idempotency keys `comment:{ig_comment_id}` /
+`delivery:{delivery_id}` (never random UUID); double-insert → exactly
+1 row; different event_type same reference → separate rows OK;
+`GET /usage/summary` calendar-month UTC default + optional `start`/
+`end` (invalid → 400 `invalid start date` / `start must be before
+end`); summary: period label, start/end, byEventType totals,
+dmsSent=private_dm_sent, limit=null + remaining=null (no fake plan);
+RLS: other-user JWT → `[]`, member can read own usage; webhook
+comment_received exactly once under duplicate POST; usage page 200
+with real period (no "All time"); pure-function selfcheck OK; node
+harness 32/32 PASS; secret scan: 0 real secrets (comments + publishable
+key only); Task 020 next.
 
 Prior verification (Task 018): 2026-09-23 Task 018 validation PASSED —
 typecheck/lint/build exit 0; migration `20260923200000_delivery_worker.sql`
@@ -181,7 +184,7 @@ blocking anon); see the Task 012 record below.
 | 017 | Automation Engine | COMPLETE |
 | 018 | BullMQ Delivery | COMPLETE |
 | 018A | Secure Admin Meta Configuration | COMPLETE |
-| 019 | Usage Tracking | NOT STARTED |
+| 019 | Usage Tracking | COMPLETE |
 | 020 | Security Hardening | NOT STARTED |
 | 021 | Testing | NOT STARTED |
 | 022 | Production Preparation | NOT STARTED |
@@ -195,13 +198,13 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 019 - Usage Tracking
+## Task 020 - Security Hardening
 
 Status: NOT STARTED
 
 ### Objective
 
-TODO — read master prompt §usage / Task 019 notes before implementing.
+TODO — read master prompt §security / Task 020 notes before implementing.
 
 ### Requirements
 
@@ -210,6 +213,142 @@ TODO — read master prompt §usage / Task 019 notes before implementing.
 ---
 
 # Completed Tasks
+
+## Task 019 - Usage Tracking
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 020.
+
+### Objective (from spec)
+
+Idempotent `usage_events` layer (DB-enforced uniqueness), usage
+service, `GET /usage/summary` with date range, RLS workspace
+isolation, wire into real webhook/engine/delivery lifecycle points,
+real data in `/settings/usage`. No payments/Stripe/fake limits,
+tests, regression suite, docs, commit+push.
+
+### What shipped
+
+- **Migration `20260923220000_usage_events.sql` APPLIED** (`supabase
+  db push`): `usage_events` (workspace FK, event_type/source/
+  reference_type checks, quantity>0, metadata jsonb, occurred_at,
+  idempotency_key); **unique (workspace_id, event_type,
+  idempotency_key)**; indexes `(workspace_id, occurred_at)` +
+  `(workspace_id, event_type, occurred_at)`; RLS member SELECT via
+  `public.is_workspace_member(workspace_id)` (no `using (true)`).
+- **`apps/api/src/usage.ts` (new):**
+  - Event types: `comment_received`, `comment_matched`,
+    `private_dm_sent`, `private_dm_failed`, `public_reply_sent`,
+    `public_reply_failed`.
+  - `recordUsageEvent()` — service-role only (`restService()`),
+    PostgREST `?on_conflict=workspace_id,event_type,idempotency_key`
+    + `Prefer: resolution=ignore-duplicates`; 23505 → `duplicate`;
+    returns `"recorded" | "duplicate" | "failed"`.
+  - `usageIdempotencyKey()` — deterministic `comment:{ig_comment_id}`
+    / `delivery:{delivery_id}` — never a random UUID.
+  - `currentUsagePeriod()` — UTC calendar month `[start, end)`.
+  - `parseUsageRange()` — optional `start`/`end` ISO dates; invalid →
+    `{ok:false, message}` (API → 400); inverted range → 400.
+  - `getWorkspaceUsage(user, start, end)` — end-user JWT + RLS via
+    `rest()` (never browser-supplied workspace id); aggregates
+    `event_type`+`quantity` in JS (limit 10000); `used` =
+    `private_dm_sent`; **`limit: null`, `remaining: null`** (no plan
+    system — never invent).
+- **Hooks (service-role writes only):**
+  - `webhooks.ts` — after persist, `outcome === "inserted"` (not
+    `duplicate`) + comment_id → `comment_received` (source `webhook`,
+    ref `comment:{ig_comment_id}`); error logged, never fails webhook.
+  - `engine.ts` — after winning claim (`claim.data.length` non-zero,
+    not `already`) → `comment_matched` (source `engine`).
+  - `delivery.ts` — `recordDeliveryUsage(row, outcome, log)` called
+    only on **terminal** `sent` and permanent `failed` — requeue
+    retries do NOT count; `queued` never counts as sent. Maps kind×
+    outcome → `private_dm_sent`/`private_dm_failed`/
+    `public_reply_sent`/`public_reply_failed` (source `delivery`, ref
+    `delivery:{id}`).
+- **`GET /usage/summary` rewritten** (`app.ts`): `parseUsageRange` +
+  `getWorkspaceUsage`; default = current UTC month; response keeps
+  UI contract (`period`, `dmsSent`, `commentsProcessed`,
+  `publicReplies`, `failedDeliveries`) + `start`, `end`,
+  `byEventType` totals, `commentsReceived`/`commentsMatched`,
+  `privateDmFailed`/`publicReplyFailed`, `used`, `limit: null`,
+  `remaining: null`.
+- **Authority map (do not conflate):**
+  - `deliveries.status` → operational delivery state.
+  - `automations.*_count` → analytics / product reporting (unchanged).
+  - `usage_events` → usage + future billing.
+- **Types/UI:** `UsageSummary` extended (optional start/end/
+  limit/remaining/byEventType/commentsMatched/…); usage page shows
+  real period (no "All time"), comments matched, failures, zero-guard
+  empty state; settings hub + dashboard consume `period`/`dmsSent`
+  unchanged.
+- **Validation script:** `apps/api/scripts/validate-usage.mjs` (node
+  harness — 32 checks: idempotency double-insert → 1 row, date range
+  filtering + boundaries, invalid input 400, workspace isolation RLS,
+  webhook duplicate → no second `comment_received`, pure-function
+  selfcheck, route sweep, regression).
+
+### Files
+
+- supabase/migrations/20260923220000_usage_events.sql (new, applied)
+- apps/api/src/usage.ts (new)
+- apps/api/src/app.ts (usage import + /usage/summary rewrite)
+- apps/api/src/webhooks.ts (comment_received hook)
+- apps/api/src/engine.ts (comment_matched hook)
+- apps/api/src/delivery.ts (recordDeliveryUsage on terminal outcomes)
+- apps/api/scripts/validate-usage.mjs (new — validation harness)
+- apps/web/types/index.ts (UsageSummary extension)
+- apps/web/lib/api/usage.ts (unchanged seam — /usage/summary)
+- apps/web/app/(dashboard)/settings/usage/page.tsx (real period, matches, failures)
+- TASK.md, Tree.md
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`,
+  `npm run build` — all exit 0.
+- Migration: `npx supabase db push` → Finished, lists exactly
+  `20260923220000_usage_events.sql`.
+- **Idempotency:** double-insert same (workspace, type, key) → 1 row;
+  different event_type same reference → 2 rows.
+- **Date range:** default = current UTC month (label `September 2026`);
+  `?start=2026-09-01&end=2026-10-01` → 200; invalid start → 400
+  `invalid start date`; inverted → 400 `start must be before end`;
+  old period → zeros.
+- **Summary shape:** `limit === null`, `remaining === null`,
+  `byEventType.private_dm_sent` numeric; `dmsSent` includes recorded
+  event.
+- **RLS:** other-user JWT on workspace's `usage_events` → `[]`;
+  member can read own.
+- **Webhook integration:** signed POST → 200 + `comment_received`
+  exactly 1; duplicate re-POST → still 1; `comment_matched` ≤ 1.
+- **Pure functions:** selfcheck OK (label, start/end boundaries,
+  parse rejects bad/inverted, idempotency keys, 6 event types).
+- **Node harness:** 32/32 PASS (health, anon 401, summary 200, range
+  validation, insert idempotency, webhook, RLS, route sweep, usage
+  page, webhook GET verify).
+- **Web:** `/settings/usage` → 200, period not "All time"; dashboard/
+  settings hub consume `period`/`dmsSent` unchanged (typecheck).
+- Secret value scan: 0 real secrets (comments + publishable key in
+  validation script only — never service-role/PAT values).
+
+### Known limitations / honest notes
+
+- Aggregation is **JS-side** (limit 10000 events per period) — fine
+  for V1; move to Postgres `sum(quantity) … group by` when volume
+  exceeds that (upgrade path, not YAGNI for launch).
+- **No plan system** — `limit`/`remaining` stay null forever until a
+  billing task adds real plan rows; never fake a number.
+- `automations.*_count` still authoritative for analytics — 019 does
+  not migrate those; both sources must stay in sync only if a future
+  task reconciles them (currently independent — documented).
+- Requeue retries correctly do not double-count, but a stuck
+  `processing` row that is manually reset after a crash mid-send
+  could under-count if never terminal — operator sees empty delivery
+  and can re-enqueue (usage stays honest: no event until terminal).
+- No Stripe/payments in V1 (per spec).
+- Task 020 Security Hardening is the next roadmap task (019 stays
+  COMPLETE).
+
+---
 
 ## Task 018A - Secure Admin Meta Configuration
 

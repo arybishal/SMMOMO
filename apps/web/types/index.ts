@@ -80,8 +80,21 @@ export interface AnalyticsSummary {
 
 export interface UsageSummary {
   period: string;
+  /** ISO window for the period (inclusive start, exclusive end). */
+  start?: string;
+  end?: string;
   dmsSent: number;
   commentsProcessed: number;
   publicReplies: number;
   failedDeliveries: number;
+  /** Task 019 extras — present when the API serves usage_events. */
+  commentsReceived?: number;
+  commentsMatched?: number;
+  privateDmFailed?: number;
+  publicReplyFailed?: number;
+  byEventType?: Record<string, number>;
+  /** Future plan hooks — null until a plan system exists (never fake). */
+  used?: number;
+  limit?: number | null;
+  remaining?: number | null;
 }

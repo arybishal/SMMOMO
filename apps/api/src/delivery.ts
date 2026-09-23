@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import { restService, serviceEnabled } from "./supabase";
+import { recordUsageEvent, type UsageEventType } from "./usage";
 
 // Task 018: outbound delivery worker. No Redis/BullMQ in this environment
 // (same gap as 017) — honest inline poll on the API process. Claim → Graph
@@ -150,6 +151,33 @@ async function finalize(
   });
 }
 
+// Usage only on terminal outcomes (sent | permanent failed) — requeue retries
+// are intermediate and must not count. Idempotent on delivery id.
+async function recordDeliveryUsage(
+  row: { id: string; workspace_id: string; kind: "private_dm" | "public_reply" },
+  outcome: "sent" | "failed",
+  log: FastifyBaseLogger,
+): Promise<void> {
+  const eventType: UsageEventType =
+    row.kind === "private_dm"
+      ? outcome === "sent"
+        ? "private_dm_sent"
+        : "private_dm_failed"
+      : outcome === "sent"
+        ? "public_reply_sent"
+        : "public_reply_failed";
+  const result = await recordUsageEvent({
+    workspaceId: row.workspace_id,
+    eventType,
+    source: "delivery",
+    referenceType: "delivery",
+    referenceId: row.id,
+  });
+  if (result === "failed") {
+    log.error({ deliveryId: row.id, eventType }, "usage: delivery event record failed");
+  }
+}
+
 async function bumpAutomation(
   automationId: string,
   field: "dm_sent_count" | "failed_count",
@@ -246,6 +274,7 @@ async function processOne(
 
   if (outcome.ok) {
     await finalize(row.id, "sent", null);
+    await recordDeliveryUsage(row, "sent", log);
     if (automationId && row.kind === "private_dm") {
       await bumpAutomation(automationId, "dm_sent_count");
     }
@@ -265,6 +294,7 @@ async function processOne(
   }
 
   await finalize(row.id, "failed", outcome.error);
+  await recordDeliveryUsage(row, "failed", log);
   if (automationId) await bumpAutomation(automationId, "failed_count");
   log.error(
     { deliveryId: row.id, attempts, error: outcome.error },
