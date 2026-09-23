@@ -1,17 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { authed, ensureWorkspace, rest, requireUser, type AuthUser } from "./supabase";
+import { getMetaConfig, type ResolvedMetaConfig } from "./platform-config";
 
-// Meta/Instagram OAuth (Task 015) — Instagram API with Instagram Login.
-// App id/secret + redirect live in API env only (never apps/web, never repo).
-const META_APP_ID = process.env.META_APP_ID ?? "";
-const META_APP_SECRET = process.env.META_APP_SECRET ?? "";
+// Meta/Instagram OAuth (Task 015). Credentials resolve through
+// getMetaConfig() (Task 018A): platform_settings (encrypted) first, then
+// META_* env. Same single source as webhooks — never a second App Secret.
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:4000";
-// Must match a Valid OAuth Redirect URI on the Meta app.
-const REDIRECT_URI =
-  process.env.META_REDIRECT_URI ??
-  `${API_ORIGIN}/social-accounts/instagram/callback`;
 const CALLBACK_PATH = "/social-accounts/instagram/callback";
 
 // Instagram professional scopes: read profile, comments (webhooks 016),
@@ -24,26 +20,26 @@ const SCOPES = [
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-function oauthConfigured(): boolean {
-  return Boolean(META_APP_ID && META_APP_SECRET);
+function oauthConfigured(cfg: ResolvedMetaConfig): boolean {
+  return Boolean(cfg.appId && cfg.appSecret);
 }
 
 // state = base64url(userId.expiry.hmac) — binds the Meta round-trip to the
 // session user (callback re-reads the cookie; mismatched/stale state → reject).
-function signState(userId: string): string {
+function signState(userId: string, appSecret: string): string {
   const exp = Date.now() + STATE_TTL_MS;
   const payload = `${userId}.${exp}`;
-  const mac = createHmac("sha256", META_APP_SECRET).update(payload).digest("hex");
+  const mac = createHmac("sha256", appSecret).update(payload).digest("hex");
   return Buffer.from(`${payload}.${mac}`, "utf8").toString("base64url");
 }
 
-function verifyState(state: string, userId: string): boolean {
+function verifyState(state: string, userId: string, appSecret: string): boolean {
   try {
     const raw = Buffer.from(state, "base64url").toString("utf8");
     const [uid, expStr, mac] = raw.split(".");
     if (!uid || !expStr || !mac || uid !== userId) return false;
     if (Date.now() > Number(expStr)) return false;
-    const expected = createHmac("sha256", META_APP_SECRET)
+    const expected = createHmac("sha256", appSecret)
       .update(`${uid}.${expStr}`)
       .digest("hex");
     const a = Buffer.from(mac, "hex");
@@ -75,7 +71,10 @@ interface IgProfile {
 
 // Exchange the authorization code, then load the IG professional profile.
 // Instagram Login token endpoint → graph.instagram.com /me for username.
-async function exchangeCode(code: string): Promise<
+async function exchangeCode(
+  code: string,
+  cfg: ResolvedMetaConfig,
+): Promise<
   { ok: true; token: string; profile: IgProfile } | { ok: false; reason: string }
 > {
   let tokenRes: Response;
@@ -84,10 +83,10 @@ async function exchangeCode(code: string): Promise<
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: META_APP_ID,
-        client_secret: META_APP_SECRET,
+        client_id: cfg.appId,
+        client_secret: cfg.appSecret,
         grant_type: "authorization_code",
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: cfg.redirectUri,
         code,
       }),
     });
@@ -190,21 +189,22 @@ async function upsertConnection(
 // Best-effort app-level webhook subscription (Task 016). Fails open: no Meta
 // app / wrong env → connect still succeeds; operator can subscribe in the
 // Meta dashboard (documented in README).
-const WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
-
-async function subscribeWebhookTopics(log: FastifyInstance["log"]): Promise<void> {
-  if (!META_APP_ID || !META_APP_SECRET || !WEBHOOK_VERIFY_TOKEN) return;
+async function subscribeWebhookTopics(
+  log: FastifyInstance["log"],
+  cfg: ResolvedMetaConfig,
+): Promise<void> {
+  if (!cfg.appId || !cfg.appSecret || !cfg.webhookVerifyToken) return;
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v22.0/${META_APP_ID}/subscriptions`,
+      `https://graph.facebook.com/v22.0/${cfg.appId}/subscriptions`,
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           object: "instagram",
           callback_url: `${API_ORIGIN}/webhooks/instagram`,
-          verify_token: WEBHOOK_VERIFY_TOKEN,
-          access_token: `${META_APP_ID}|${META_APP_SECRET}`,
+          verify_token: cfg.webhookVerifyToken,
+          access_token: `${cfg.appId}|${cfg.appSecret}`,
           fields: "comments,messages",
         }),
       },
@@ -220,16 +220,17 @@ async function subscribeWebhookTopics(log: FastifyInstance["log"]): Promise<void
 export function registerMetaRoutes(app: FastifyInstance): void {
   // Browser navigation (not XHR) — friendly redirect when unconfigured.
   app.get("/social-accounts/instagram/connect", async (req, reply) => {
-    if (!oauthConfigured()) {
+    const cfg = await getMetaConfig();
+    if (!oauthConfigured(cfg)) {
       return webRedirect(reply, "/settings/social-accounts", {
         oauth: "not_configured",
       });
     }
     const user = authed(req);
-    const state = signState(user.id);
+    const state = signState(user.id, cfg.appSecret);
     const url = new URL("https://www.instagram.com/oauth/authorize");
-    url.searchParams.set("client_id", META_APP_ID);
-    url.searchParams.set("redirect_uri", REDIRECT_URI);
+    url.searchParams.set("client_id", cfg.appId);
+    url.searchParams.set("redirect_uri", cfg.redirectUri);
     url.searchParams.set("scope", SCOPES);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
@@ -239,8 +240,9 @@ export function registerMetaRoutes(app: FastifyInstance): void {
   // Meta redirects the browser here with the session cookie still present
   // (localhost is host-scoped, not port-scoped). Own auth handling so an
   // expired session becomes a login redirect, not a JSON 401.
-  app.get(CALLBACK_PATH, async (req: FastifyRequest, reply) => {
-    if (!oauthConfigured()) {
+  app.get(CALLBACK_PATH, async (req: FastifyRequest, reply: FastifyReply) => {
+    const cfg = await getMetaConfig();
+    if (!oauthConfigured(cfg)) {
       return webRedirect(reply, "/settings/social-accounts", {
         oauth: "not_configured",
       });
@@ -263,7 +265,7 @@ export function registerMetaRoutes(app: FastifyInstance): void {
         oauth: "denied",
       });
     }
-    if (!query.code || !query.state || !verifyState(query.state, user.id)) {
+    if (!query.code || !query.state || !verifyState(query.state, user.id, cfg.appSecret)) {
       return webRedirect(reply, "/settings/social-accounts", {
         oauth: "invalid_state",
       });
@@ -271,7 +273,7 @@ export function registerMetaRoutes(app: FastifyInstance): void {
 
     try {
       const workspaceId = await ensureWorkspace(user);
-      const exchanged = await exchangeCode(query.code);
+      const exchanged = await exchangeCode(query.code, cfg);
       if (!exchanged.ok) {
         return webRedirect(reply, "/settings/social-accounts", {
           oauth: exchanged.reason,
@@ -283,7 +285,7 @@ export function registerMetaRoutes(app: FastifyInstance): void {
         exchanged.profile,
         exchanged.token,
       );
-      await subscribeWebhookTopics(req.log);
+      await subscribeWebhookTopics(req.log, cfg);
       return webRedirect(reply, "/settings/social-accounts", {
         oauth: "connected",
       });

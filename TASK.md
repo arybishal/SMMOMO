@@ -8,14 +8,33 @@ Current Phase: Frontend Foundation
 
 Current Task: Task 019 - Usage Tracking
 
-Last Completed Task: Task 018 - BullMQ Delivery
+Last Completed Task: Task 018A - Secure Admin Meta Configuration
 
 Next Task: Task 019 - Usage Tracking
 
-Last Updated: 2026-09-23 (Task 018)
+Last Updated: 2026-09-23 (Task 018A)
 
-Verification: 2026-09-23 Task 018 validation PASSED — typecheck/lint/
-build:api/build exit 0; migration `20260923200000_delivery_worker.sql`
+Verification: 2026-09-23 Task 018A validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260923210000_platform_settings.sql`
+APPLIED via `supabase db push` (single-row `platform_settings`, RLS on
+with **no** policies — service-role only); admin gate = `PLATFORM_ADMIN_EMAILS`
+env (server-side after session preHandler); AES-256-GCM encrypt of App
+Secret + webhook verify token under `PLATFORM_ENCRYPTION_KEY`;
+**anon GET admin → 401**; **non-admin GET/PUT/test → 403**; admin GET
+returns only `configured` flags + `source=db|env` (no plaintext);
+PUT save → DB row ciphertext `v1.…` (not plaintext); after save
+webhook GET verify uses **DB token** (200) while wrong token → 403;
+POST HMAC with **DB App Secret** → 200, bad sig → 403; OAuth connect
+→ 302 with `client_id` from resolved config; product route sweep
+8/8 200; Settings hub + `/settings/integrations` → 200 for admin
+(no secret leak in HTML), non-admin → redirect `/settings` and hub
+hides Integrations row, anon → login redirect; end-user JWT on
+`platform_settings` → empty `[]` (RLS); production build + repo
+secret-value scan clean (0 hits); DB test markers cleared → env
+fallback webhook verify 200 again; Task 019 next.
+
+Prior verification (Task 018): 2026-09-23 Task 018 validation PASSED —
+typecheck/lint/build exit 0; migration `20260923200000_delivery_worker.sql`
 APPLIED via `supabase db push` (status check + `attempts` +
 `claimed_at` + partial queued index); worker started on API process
 (`pollMs=1500`, `graph=http://127.0.0.1:4090` validation stub);
@@ -161,6 +180,7 @@ blocking anon); see the Task 012 record below.
 | 016 | Meta Webhooks | COMPLETE |
 | 017 | Automation Engine | COMPLETE |
 | 018 | BullMQ Delivery | COMPLETE |
+| 018A | Secure Admin Meta Configuration | COMPLETE |
 | 019 | Usage Tracking | NOT STARTED |
 | 020 | Security Hardening | NOT STARTED |
 | 021 | Testing | NOT STARTED |
@@ -190,6 +210,119 @@ TODO — read master prompt §usage / Task 019 notes before implementing.
 ---
 
 # Completed Tasks
+
+## Task 018A - Secure Admin Meta Configuration
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 019 (unchanged).
+
+### Objective (from spec)
+
+Admin-managed Meta app credentials (App ID/Secret, webhook verify token)
+with server-side encryption, platform-admin-only API access, Settings UI,
+wired into Task 015 OAuth + Task 016 webhook as a **single source of
+truth**. Platform-level vs workspace-level must not mix. Do not mark
+Task 018 complete as part of this task (018 was already shipped — this
+interstitial task does not change delivery).
+
+### What shipped
+
+- **Platform-admin model (new — none existed):** API env
+  `PLATFORM_ADMIN_EMAILS` (comma-separated). Checked server-side after
+  the normal session preHandler using Auth profile email. No client
+  `isAdmin` flag; workspace `workspace_members.role` stays workspace-scoped
+  and is not used for platform secrets.
+- **`platform_settings` single-row table** (migration
+  `20260923210000_platform_settings.sql` APPLIED): `id` boolean PK
+  constrained to true; `meta_app_id`, `meta_app_secret_encrypted`,
+  `webhook_verify_token_encrypted`, `updated_at`, `updated_by`. RLS
+  enabled with **no policies** (end-user JWTs get zero rows; only
+  service-role reads/writes). No `using (true)`.
+- **`apps/api/src/platform-config.ts`:** AES-256-GCM encrypt/decrypt
+  (`v1.<iv>.<tag>.<ct>` base64url) keyed by `PLATFORM_ENCRYPTION_KEY`
+  (64 hex or 32-byte base64). **Precedence (one rule):** non-empty DB
+  field wins; empty/missing DB falls back to matching `META_*` env.
+  Redirect URI is deployment config only (env / default
+  `API_ORIGIN + callback path`) — not admin-editable. Process-local
+  cache invalidated on save.
+- **`apps/api/src/admin.ts`:** `GET/PUT /admin/integrations/meta`,
+  `POST /admin/integrations/meta/test`. GET never returns plaintext
+  secrets — only `appSecretConfigured`/`webhookVerifyTokenConfigured`
+  flags + `source=db|env|none`. PUT encrypts non-empty secrets; empty
+  string clears; omitted leaves unchanged. Secret write without
+  encryption key → 503.
+- **Wiring:** `meta.ts` (OAuth connect/callback/state HMAC/token
+  exchange/webhook subscribe) and `webhooks.ts` (GET verify + POST
+  HMAC) both call `getMetaConfig()` — one resolved object, never a
+  second App ID/Secret path. Workspace `social_accounts.access_token`
+  remains separate (workspace-level) and is never written to
+  platform_settings.
+- **Settings UI:** `/settings/integrations` server page (admin only —
+  API 403 → redirect `/settings`) + `MetaForm` client island (App ID,
+  password fields for secrets with Configured badges, read-only
+  redirect URI + copy, Test configuration). Integrations hub row only
+  renders when `GET /admin/integrations/meta` succeeds (API-side gate).
+- **`.env.example`:** documents `PLATFORM_ADMIN_EMAILS`,
+  `PLATFORM_ENCRYPTION_KEY`, and that empty DB fields fall back to
+  `META_*` env defaults.
+
+### Files
+
+- supabase/migrations/20260923210000_platform_settings.sql (new)
+- apps/api/src/platform-config.ts (new)
+- apps/api/src/admin.ts (new)
+- apps/api/src/meta.ts (getMetaConfig wiring)
+- apps/api/src/webhooks.ts (getMetaConfig wiring)
+- apps/api/src/supabase.ts (AuthUser.email)
+- apps/api/src/app.ts (registerAdminRoutes)
+- apps/web/lib/api/admin-meta.ts (new)
+- apps/web/lib/api/client.ts (PUT method)
+- apps/web/app/(dashboard)/settings/page.tsx (Integrations row)
+- apps/web/app/(dashboard)/settings/integrations/page.tsx (new)
+- apps/web/app/(dashboard)/settings/integrations/meta-form.tsx (new)
+- .env.example
+- TASK.md, Tree.md
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`, `npm run build` — all exit 0.
+- Migration: `npx supabase db push` → Finished, lists exactly `20260923210000_platform_settings.sql`.
+- **Auth:** anon admin GET → 401; non-admin (separate confirmed user)
+  GET/PUT/test → 403; admin GET → 200.
+- **Masking:** admin GET/PUT responses and Settings HTML contain no
+  App Secret / verify-token plaintext; flags + sources only.
+- **Encryption:** PUT stores `meta_app_secret_encrypted` /
+  `webhook_verify_token_encrypted` as `v1.…` ciphertext (not plaintext).
+- **Single source:** after DB save, webhook GET verify uses DB token
+  (200); POST HMAC signed with DB App Secret → 200; bad sig → 403.
+  After clearing DB fields, env `META_WEBHOOK_VERIFY_TOKEN` works again
+  (200) — proves env fallback.
+- **OAuth:** `/social-accounts/instagram/connect` → 302
+  `client_id=app-id-018a` (resolved config).
+- **RLS:** end-user JWT `GET platform_settings` → `[]` (no rows).
+- **Routes:** product sweep 8/8 200; `/health` 200.
+- **Web:** `/settings` for admin → 200 with Integrations link; non-admin
+  hub hides Integrations; non-admin `/settings/integrations` → 307
+  `/settings`; anon → login redirect; admin integrations page has
+  App ID but no secret values.
+- Secret value scan: production build (`.next/static`,
+  `.next/server`, `api/dist`) + tracked sources → 0 hits for
+  service-role key, encryption key, test secret markers.
+
+### Known limitations / honest notes
+
+- Platform admin is **env-email allowlist only** (no platform-admin
+  table/UI). Grant/revoke = edit `PLATFORM_ADMIN_EMAILS` + restart API.
+  Upgrade path: `platform_admins` table when multi-admin self-serve is needed.
+- Config cache is process-local; multi-instance deploy needs short TTL
+  or invalidation broadcast if saves must be instant everywhere.
+- `redirectUri` is intentionally not stored in DB (deployment config).
+- Workspace-level IG tokens (`social_accounts`) unchanged — not part
+  of platform_settings.
+- Encryption key absent → secret writes 503; DB-encrypted fields
+  ignored (fall back to env). Documented in `.env.example`.
+- Task 019 Usage Tracking remains the next roadmap task (018 stays COMPLETE).
+
+---
 
 ## Task 018 - BullMQ Delivery
 

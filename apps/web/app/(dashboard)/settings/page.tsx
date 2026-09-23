@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getInstagramAccount } from "@/lib/api/social-accounts";
 import { getUsageSummary } from "@/lib/api/usage";
+import { getAdminMetaConfig } from "@/lib/api/admin-meta";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import {
@@ -16,6 +17,15 @@ export default async function SettingsPage() {
     getInstagramAccount(),
     getUsageSummary(),
   ]);
+
+  // Platform-admin Integrations row only when the API grants access —
+  // never a client-side isAdmin flag.
+  let adminMeta: Awaited<ReturnType<typeof getAdminMetaConfig>> | null = null;
+  try {
+    adminMeta = await getAdminMetaConfig();
+  } catch {
+    adminMeta = null;
+  }
 
   const sections = [
     {
@@ -40,6 +50,18 @@ export default async function SettingsPage() {
       detail: `${usage.period} · ${usage.dmsSent.toLocaleString()} DMs sent`,
       icon: IconAnalytics,
     },
+    ...(adminMeta
+      ? [
+          {
+            href: "/settings/integrations",
+            title: "Integrations",
+            detail: `Meta / Instagram · ${
+              adminMeta.metaConfigured ? "Configured" : "Not configured"
+            }`,
+            icon: IconSettings,
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -8,6 +8,7 @@ import {
 } from "./supabase";
 import { registerMetaRoutes } from "./meta";
 import { registerWebhookRoutes } from "./webhooks";
+import { registerAdminRoutes } from "./admin";
 
 // Keep aligned with apps/api/package.json "version" when bumping.
 const SERVICE = "smmomo-api";
@@ -541,6 +542,10 @@ export async function buildApp() {
 
   // Meta webhooks: verify handshake + signed event ingest (Task 016).
   registerWebhookRoutes(app);
+
+  // Platform admin: Meta app credentials (Task 018A). Session preHandler runs;
+  // platform-admin email gate is inside these handlers.
+  registerAdminRoutes(app);
 
   return app;
 }

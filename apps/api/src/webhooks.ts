@@ -2,12 +2,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { restService, serviceEnabled } from "./supabase";
 import { runCommentEngine } from "./engine";
+import { getMetaConfig } from "./platform-config";
 
 // Meta webhooks (Task 016): GET verify handshake + POST signature-checked
 // comment events → comments table. Meta servers have no session cookie —
 // writes use SUPABASE_SERVICE_ROLE_KEY (API env only, never apps/web).
-const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
-const APP_SECRET = process.env.META_APP_SECRET ?? "";
+// Verify token + App Secret resolve through getMetaConfig() (Task 018A) —
+// same single source as OAuth.
 
 interface CommentChange {
   from?: { username?: string };
@@ -27,9 +28,13 @@ interface WebhookBody {
   object?: string;
 }
 
-function verifySignature(raw: string, header: string | undefined): boolean {
+function verifySignature(
+  raw: string,
+  header: string | undefined,
+  appSecret: string,
+): boolean {
   if (!header || !header.startsWith("sha256=")) return false;
-  const expected = createHmac("sha256", APP_SECRET).update(raw).digest("hex");
+  const expected = createHmac("sha256", appSecret).update(raw).digest("hex");
   const provided = header.slice("sha256=".length);
   if (provided.length !== expected.length) return false;
   try {
@@ -107,12 +112,13 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       "hub.verify_token"?: string;
       "hub.challenge"?: string;
     };
-    if (!VERIFY_TOKEN) {
+    const cfg = await getMetaConfig();
+    if (!cfg.webhookVerifyToken) {
       return reply
         .code(503)
         .send({ statusCode: 503, error: "Service Unavailable", message: "webhook not configured" });
     }
-    if (q["hub.mode"] === "subscribe" && q["hub.verify_token"] === VERIFY_TOKEN) {
+    if (q["hub.mode"] === "subscribe" && q["hub.verify_token"] === cfg.webhookVerifyToken) {
       return reply.type("text/plain").send(q["hub.challenge"] ?? "");
     }
     return reply.code(403).send({ statusCode: 403, error: "Forbidden" });
@@ -121,7 +127,8 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
   // POST event delivery — signature over raw body; 200 only after durable persist.
   // Raw body attached by the application/json content-type parser in app.ts.
   app.post("/webhooks/instagram", async (req, reply) => {
-    if (!APP_SECRET) {
+    const cfg = await getMetaConfig();
+    if (!cfg.appSecret) {
       return reply
         .code(503)
         .send({ statusCode: 503, error: "Service Unavailable", message: "META_APP_SECRET not set" });
@@ -133,7 +140,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     }
     const raw = (req as FastifyRequest & { rawBody?: string }).rawBody ?? "";
     const sig = req.headers["x-hub-signature-256"];
-    if (!verifySignature(raw, typeof sig === "string" ? sig : undefined)) {
+    if (!verifySignature(raw, typeof sig === "string" ? sig : undefined, cfg.appSecret)) {
       return reply.code(403).send({ statusCode: 403, error: "Forbidden", message: "invalid signature" });
     }
 

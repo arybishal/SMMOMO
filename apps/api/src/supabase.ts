@@ -17,6 +17,8 @@ const SESSION_COOKIE = `sb-${PROJECT_REF}-auth-token`;
 export interface AuthUser {
   id: string;
   token: string;
+  // From Auth's /auth/v1/user profile — used for platform-admin email checks.
+  email?: string;
 }
 
 declare module "fastify" {
@@ -87,14 +89,14 @@ export async function requireUser(
       .send({ statusCode: 401, error: "Unauthorized", message: "Session expired" });
     return null;
   }
-  const user = (await res.json()) as { id?: string };
+  const user = (await res.json()) as { id?: string; email?: string };
   if (!user.id) {
     await reply
       .code(401)
       .send({ statusCode: 401, error: "Unauthorized", message: "Session expired" });
     return null;
   }
-  return { id: user.id, token };
+  return { id: user.id, token, email: user.email };
 }
 
 // PostgREST call with the caller's JWT (RLS scopes the rows) + publishable key.

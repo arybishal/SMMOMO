@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 018 — BullMQ Delivery / inline delivery worker)
+Last updated: 2026-09-23 (Task 018A — Secure Admin Meta Configuration)
 
 ---
 
@@ -21,12 +21,14 @@ smmomo/
 │   │   ├── package.json      Workspace "api": dev/build/start/typecheck
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   └── src/
-│   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads) + registerMetaRoutes + registerWebhookRoutes
+│   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
+│   │       ├── admin.ts      Platform-admin routes (018A): GET/PUT /admin/integrations/meta + POST …/test (PLATFORM_ADMIN_EMAILS gate; secrets never in GET)
+│   │       ├── platform-config.ts  Meta config service (018A): AES-256-GCM encrypt + getMetaConfig() DB-first/env-fallback single source for OAuth + webhooks
 │   │       ├── delivery.ts   Delivery worker (018): inline poll claim queued→processing → Graph send → sent/requeue/failed + automation counters (META_GRAPH_BASE overridable for stub validation only)
 │   │       ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries (inline; no Redis)
-│   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe
-│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist → runCommentEngine (service_role, idempotent)
-│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery path only
+│   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe (credentials via getMetaConfig)
+│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist → runCommentEngine (service_role, idempotent; tokens via getMetaConfig)
+│   │       ├── supabase.ts   Cookie session → verify JWT (+email) → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery/platform_settings
 │   │       └── server.ts     Listen on PORT (default 4000) + startDeliveryWorker (018)
 │   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
@@ -68,12 +70,14 @@ smmomo/
 │       │       │   └── inbox.tsx            Client island: activity list + detail panel, selection/search/outcome+post filters (not a route)
 │       │       ├── analytics/page.tsx       Server page: KPIs (Dashboard-consistent), 7-day CSS chart + text summary, automation/content performance tables, delivery breakdown + failure records (all via lib/api)
 │       │       └── settings/
-│       │           ├── page.tsx                   Async hub: live lib/api summaries per row (account state, period·DMs)
+│       │           ├── page.tsx                   Async hub: live lib/api summaries per row (account, period·DMs) + Integrations row only if admin API allows
 │       │           ├── account/page.tsx           Server page: session getUser → email + name (redirect /login if none)
 │       │           ├── account/account-form.tsx   Client island: Name, Email (readOnly), optional password change → updateUser; Save enabled
 │       │           ├── social-accounts/page.tsx   Instagram card + OAuth ?oauth= notices + live Connect/Disconnect (Task 015)
 │       │           ├── social-accounts/actions.tsx  Client islands: ConnectInstagram link + DisconnectInstagram (DELETE + connection-changed event)
-│       │           └── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
+│       │           ├── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
+│       │           ├── integrations/page.tsx      Server page: platform-admin only (API 403 → redirect /settings) → MetaForm
+│       │           └── integrations/meta-form.tsx Client island: App ID + secret/verify password fields + Configured badges + read-only redirect URI + Test
 │       │
 │       ├── components/
 │       │   ├── auth-result-bridge.tsx  Client: if URL has Supabase auth tokens/?code=, replace() → /auth/confirm (silent on normal visits)
@@ -91,12 +95,13 @@ smmomo/
 │       │
 │       ├── lib/
 │       │   ├── api/
-│       │   │   ├── client.ts           request() seam: USE_MOCK=false → fetch(API_BASE); options (method/body); 404→undefined; server-side cookie forward (next/headers)
+│       │   │   ├── client.ts           request() seam: USE_MOCK=false → fetch(API_BASE); options (method/body incl. PUT); 404→undefined; server-side cookie forward (next/headers)
 │       │   │   ├── automations.ts      listAutomations, getAutomation, createAutomation, updateAutomation
 │       │   │   ├── posts.ts            listPosts, getPost (plain API seam — dual path removed)
 │       │   │   ├── social-accounts.ts  listSocialAccounts, getInstagramAccount, instagramConnectHref, disconnectInstagram
 │       │   │   ├── analytics.ts        getAnalyticsSummary
 │       │   │   ├── usage.ts            getUsageSummary
+│       │   │   ├── admin-meta.ts       getAdminMetaConfig, saveAdminMetaConfig, testAdminMetaConfig (platform-admin only)
 │       │   │   └── inbox.ts            listRecentComments, listRecentDeliveries
 │       │   ├── supabase/
 │       │   │   ├── client.ts           Browser Supabase client (@supabase/ssr createBrowserClient, publishable key, lazy env check)
@@ -123,7 +128,8 @@ smmomo/
 │       ├── 20260923170000_bootstrap_and_automation_writes.sql  bootstrap_workspace() RPC + member INSERT/UPDATE on automations (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923180000_social_account_oauth_writes.sql  social_accounts token columns + member INSERT/UPDATE/DELETE (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923190000_webhook_events.sql  comments + deliveries tables + posts.ig_media_id + member SELECT RLS (APPLIED 2026-09-23 via supabase db push)
-│       └── 20260923200000_delivery_worker.sql  deliveries status + processing + attempts/claimed_at + queued index (APPLIED 2026-09-23 via supabase db push)
+│       ├── 20260923200000_delivery_worker.sql  deliveries status + processing + attempts/claimed_at + queued index (APPLIED 2026-09-23 via supabase db push)
+│       └── 20260923210000_platform_settings.sql  single-row platform Meta settings, RLS no policies, service-role only (APPLIED 2026-09-23 via supabase db push)
 │
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
@@ -162,6 +168,9 @@ smmomo/
   handshake + signed comment ingest → engine (Task 016–017).
   `apps/api/src/engine.ts` → keyword match + delivery enqueue (Task 017).
   `apps/api/src/delivery.ts` → inline delivery worker claim/send/counters (Task 018).
+  `apps/api/src/platform-config.ts` + `admin.ts` → platform Meta config
+  (encrypted `platform_settings`, DB-first/env-fallback) + admin-only
+  GET/PUT/test routes (Task 018A) — single source for OAuth + webhooks.
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`
@@ -175,7 +184,7 @@ smmomo/
 - `apps/web/components/auth-result-bridge.tsx` → Root-layout client bridge:
   when Supabase Site URL lands on `/` with auth result params, forwards to
   `/auth/confirm` so the session is established and the user sees the state.
-- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor): foundation, bootstrap/automation writes, social OAuth columns, webhook events (comments/deliveries), delivery worker (`20260923200000`).
+- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor): foundation, bootstrap/automation writes, social OAuth columns, webhook events (comments/deliveries), delivery worker (`20260923200000`), platform settings (`20260923210000`).
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.
 - `apps/web/types/index.ts` → Shared frontend domain types (match future API contracts).
 
