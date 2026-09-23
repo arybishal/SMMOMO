@@ -1,30 +1,47 @@
 import Link from "next/link";
+import { getInstagramAccount } from "@/lib/api/social-accounts";
+import { getUsageSummary } from "@/lib/api/usage";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
-import { IconArrowRight, IconInstagram, IconSettings } from "@/components/layout/icons";
+import {
+  IconAnalytics,
+  IconArrowRight,
+  IconInstagram,
+  IconSettings,
+} from "@/components/layout/icons";
 
-const sections = [
-  {
-    href: "/settings/account",
-    title: "Account",
-    detail: "Name, email, and password.",
-    icon: IconSettings,
-  },
-  {
-    href: "/settings/social-accounts",
-    title: "Social accounts",
-    detail: "Connected Instagram accounts.",
-    icon: IconInstagram,
-  },
-  {
-    href: "/settings/usage",
-    title: "Usage",
-    detail: "DMs, comments, and replies this period.",
-    icon: IconArrowRight,
-  },
-];
+// Hub rows carry live summaries from lib/api (same seam as every other page).
+export default async function SettingsPage() {
+  const [account, usage] = await Promise.all([
+    getInstagramAccount(),
+    getUsageSummary(),
+  ]);
 
-export default function SettingsPage() {
+  const sections = [
+    {
+      href: "/settings/account",
+      title: "Account",
+      detail: "Name, email, and password.",
+      icon: IconSettings,
+    },
+    {
+      href: "/settings/social-accounts",
+      title: "Social accounts",
+      detail: account
+        ? `@${account.username} · ${
+            account.status === "connected" ? "Connected" : "Needs attention"
+          }`
+        : "No Instagram account connected.",
+      icon: IconInstagram,
+    },
+    {
+      href: "/settings/usage",
+      title: "Usage",
+      detail: `${usage.period} · ${usage.dmsSent.toLocaleString()} DMs sent`,
+      icon: IconAnalytics,
+    },
+  ];
+
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
@@ -42,7 +59,9 @@ export default function SettingsPage() {
                   <Icon className="h-4.5 w-4.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">{s.title}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {s.title}
+                  </p>
                   <p className="text-xs text-muted-foreground">{s.detail}</p>
                 </div>
                 <IconArrowRight className="h-4 w-4 text-subtle-foreground" />

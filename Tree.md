@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 009)
+Last updated: 2026-09-23 (Task 010)
 
 ---
 
@@ -53,10 +53,10 @@ smmomo/
 │       │       │   └── inbox.tsx            Client island: activity list + detail panel, selection/search/outcome+post filters (not a route)
 │       │       ├── analytics/page.tsx       Server page: KPIs (Dashboard-consistent), 7-day CSS chart + text summary, automation/content performance tables, delivery breakdown + failure records (all via lib/api)
 │       │       └── settings/
-│       │           ├── page.tsx                   Settings hub (links to 3 sections)
-│       │           ├── account/page.tsx           Profile form (client; save disabled until auth)
-│       │           ├── social-accounts/page.tsx   Instagram card; Connect disabled (no OAuth fakes)
-│       │           └── usage/page.tsx             Usage counters for the current period
+│       │           ├── page.tsx                   Async hub: live lib/api summaries per row (account state, period·DMs)
+│       │           ├── account/page.tsx           Profile + password form (client; Save disabled until auth — Task 013)
+│       │           ├── social-accounts/page.tsx   Instagram 3-state card (connected/error/missing) + Connect/Disconnect disabled (Task 015)
+│       │           └── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
 │       │
 │       ├── components/
 │       │   ├── ui/

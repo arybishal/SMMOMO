@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 010 - Settings
+Current Task: Task 011 - Backend Foundation
 
-Last Completed Task: Task 009 - Analytics
+Last Completed Task: Task 010 - Settings
 
-Next Task: Task 010 - Settings
+Next Task: Task 011 - Backend Foundation
 
-Last Updated: 2026-09-23 (Task 009)
+Last Updated: 2026-09-23 (Task 010)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -70,7 +70,7 @@ changed no database objects, migrations, or RLS.
 | 007 | Posts + Supabase Foundation | COMPLETE |
 | 008 | Inbox | COMPLETE |
 | 009 | Analytics | COMPLETE |
-| 010 | Settings | NOT STARTED |
+| 010 | Settings | COMPLETE |
 | 011 | Backend Foundation | NOT STARTED |
 | 012 | Database | NOT STARTED |
 | 013 | Authentication | NOT STARTED |
@@ -93,46 +93,184 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 010 - Settings
+## Task 011 - Backend Foundation
 
 Status: NOT STARTED
 
 ### Objective
 
-Refine the Settings surfaces (hub + account + social-accounts + usage)
-from their Task 002/003 first-pass state into finished V1 screens — deeper
-usage detail, consistent layout/copy, honest disabled states — using only
-existing `lib/api` data, no new deps, no fake backend behavior.
+Scaffold the Phase 2 backend: an `apps/api` Fastify + TypeScript service
+that boots locally, answers a health check, and provides the project
+structure later tasks (012-018) plug into — without touching the web app's
+`USE_MOCK=true` seam or faking any product endpoints.
 
-### Requirements (derived from this file's note on Tasks 004–10 + current
-repo state — confirm against the master prompt before starting)
+### Requirements (derived from README architecture + roadmap row "Backend
+Foundation" — confirm against the master prompt before starting)
 
-- Inspect all four routes first (`/settings`,
-  `/settings/account`, `/settings/social-accounts`, `/settings/usage`)
-  and deepen rather than rebuild.
-- Preserve honest disabled states: account Save stays disabled until
-  auth (Task 013); Instagram Connect stays disabled until Meta OAuth
-  (Task 015) — do **not** fake either flow.
-- Usage page: expand on the existing `UsageSummary` contract only
-  (`period`, `dmsSent`, `commentsProcessed`, `publicReplies`,
-  `failedDeliveries`) — no fabricated quotas/limits/percentages not in
-  the model.
-- Keep client state in a colocated island if needed (established pattern);
-  server pages keep loading through `lib/api`.
-- Accessibility: labeled fields, headings, text-not-color-only states.
-- Tokens/primitives only; no new deps; mock-only; do not touch unrelated
-  routes.
+- Create `apps/api` workspace (Fastify + TypeScript, strict, Node >= 20),
+  wired into the existing npm workspaces (`apps/*` already matches).
+- `GET /health` returning status/version/uptime JSON; structured 404 for
+  unknown routes; sane default error handler (no stack leaks).
+- CORS restricted to `http://localhost:3000` (web dev origin); listen on
+  `PORT` env (default 4000 — matches `NEXT_PUBLIC_API_URL` docs).
+- Root scripts for running/typechecking the API alongside the web app;
+  `README.md`/`Tree.md`/env docs updated (`PORT` reserved).
+- No product endpoints (posts/automations/inbox/etc. belong to Task 014);
+  no DB/Redis/auth wiring (Tasks 012/013/018); web `USE_MOCK` unchanged;
+  no new deps beyond Fastify + its TS types.
 
 ### Notes
 
-- Dashboard's usage strip links here (`Details` → `/settings/usage`) —
-  keep terminology consistent (DMs sent / public replies / failed).
-- Social-accounts page already renders a real `SocialAccount` mock
-  (connected badge, username, followers, connected-since).
+- Web `lib/api/client.ts` already targets `http://localhost:4000` when
+  `USE_MOCK=false` — do not change its contract.
+- Monorepo convention: web keeps `tsc --noEmit` clean on a clean clone;
+  API should follow the same explicit-typing style.
 
 ---
 
 # Completed Tasks
+
+## Task 010 - Settings
+
+Status: COMPLETE
+
+Completed:
+
+- All four Settings surfaces deepened in place from their Task 002/003
+  first-pass state (4 files changed, +198/−64; no files created/removed;
+  no shared components modified; no new dependencies).
+- **`/settings` hub** — now an async server page loading
+  `getInstagramAccount()` + `getUsageSummary()` via `Promise.all`
+  (established loader pattern), so each row carries a live summary:
+  Account keeps static copy, Social accounts shows `@username ·
+  Connected|Needs attention` (text state, not color-only), Usage shows
+  `{period} · {dmsSent} DMs sent`. Usage row icon switched from the
+  placeholder arrow to `IconAnalytics`; link-card layout/tokens unchanged.
+- **`/settings/account`** — keeps `"use client"` island + `preventDefault`
+  form; added the password block the hub already promised (Current /
+  New password, `autoComplete` current/new-password, `CardTitle` h2
+  subsection behind a `border-border-muted` divider); `autoComplete` added
+  to name/email; single visible hint under Save: "Save stays disabled
+  until authentication lands (Task 013) — no fake persistence yet."
+  **Save stays unconditionally disabled — no fake persistence.**
+- **`/settings/social-accounts`** — honest three-state rendering of the
+  `SocialAccount | undefined` mock: connected (default: icon block,
+  `@username`, `{followers} followers · connected Aug 14, 2026` full
+  date via `toLocaleDateString("en-US", {dateStyle-shorthand})`, success
+  Badge "Connected"); `status === "error"` → `border-danger` card +
+  "Needs attention — reconnect once Instagram login ships (Task 015)" +
+  failed Badge (text + color); `undefined` → muted icon, "Not connected",
+  explanatory line. Added a **Disconnect** action row (only when an
+  account exists) mirroring the existing dashed Connect row — both
+  buttons `disabled` with explicit Task 015 copy (**no fake OAuth flow**).
+- **`/settings/usage`** — stayed strictly within the `UsageSummary`
+  contract (period/dmsSent/commentsProcessed/publicReplies/
+  failedDeliveries): `This period` CardTitle + neutral period Badge;
+  each row gained an honest one-line descriptor (what the counter
+  means); failed > 0 stays `text-danger` (number always present — never
+  color-alone); zero-guard → "No usage recorded this period yet.";
+  contextual cross-link "Failed deliveries are broken down in Analytics"
+  → `/analytics` only when `failedDeliveries > 0`; footer billing note
+  kept ("Usage feeds future billing. No payment integration in V1.").
+  Row labels keep Dashboard-strip terminology exactly (DMs sent /
+  comments processed / public replies / failed deliveries).
+- Accessibility: every field has `Label htmlFor`; sections use
+  h1 (PageHeader) / h2 (CardTitle); status conveyed as text
+  ("Connected"/"Needs attention") alongside badge color; disabled
+  buttons carry visible text reasons.
+- No unrelated routes touched — regression sweep PASS (Dashboard, Inbox,
+  Analytics, Automations incl. auto_1/missing/edit flows, Posts,
+  Login/Register, Landing).
+
+What it does:
+
+Settings now reads as a finished V1 section: the hub previews live state
+from the same `lib/api` seam every other page uses, account exposes the
+full profile+password shape behind an honest auth gate, social accounts
+shows exactly what the connection state is (including the error branch)
+with honestly-disabled Connect/Disconnect, and usage explains its own
+numbers without inventing quotas or percentages. Architecture unchanged
+(UI → lib/api → mock); zero new dependencies; mock-only.
+
+Files (key):
+
+- apps/web/app/(dashboard)/settings/page.tsx (async hub + live summaries)
+- apps/web/app/(dashboard)/settings/account/page.tsx (password block + hints)
+- apps/web/app/(dashboard)/settings/social-accounts/page.tsx (3-state card + Disconnect row)
+- apps/web/app/(dashboard)/settings/usage/page.tsx (period badge, descriptors, zero-guard, Analytics link)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- None. Consumed existing `getInstagramAccount()` + `getUsageSummary()` —
+  no new endpoints, types, fields, or mock objects; no `lib/mock`
+  imports in pages (grep-verified); mock data unmodified.
+
+Error & loading handling:
+
+- No try/catch (convention — failures throw to Next's error page); no
+  `loading.tsx` (mocks resolve instantly); async `Promise.all` on the hub
+  drops into a real API without UI changes.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (Next 16.3.6; all 4 settings routes static ○).
+- Dev-server route sweep — 17/17 statuses (incl. `automations/missing`
+  404, `?edit=nope` 404).
+- `/settings` HTML assertions: period·DMs summary (`September 2026 · 611
+  DMs sent`), `bishal.grows · Connected`, hub copy, `Settings` h1.
+- `/settings/account`: Current/New password labels, 2× `type="password"`,
+  `autoComplete="current-password"`, `<label for="name">`, Save-hint
+  text, 1 disabled button.
+- `/settings/social-accounts`: `@bishal.grows`, `12,480 followers ·
+  connected Aug 14, 2026`, `Disconnect bishal.grows` (node-aware
+  `Disconnect <!-- -->bishal.grows`), Task 015 Connect copy, success
+  Badge, 2 disabled buttons; **negative**: `border-danger` and
+  "Needs attention — reconnect" absent (mock is connected).
+- `/settings/usage`: `This period`, period Badge, `1,842`, all 4
+  descriptors, Analytics cross-link + `href="/analytics"`, billing note,
+  `text-danger` (failed=8>0).
+- Regressions (all PASS): Dashboard (`Needs attention`, node-aware
+  `Usage · <!-- -->September 2026`, Details→`/settings/usage` link,
+  12,480 followers), Inbox (Ignored/Private DM/Public reply), Analytics
+  (Last 7 days, Failed deliveries, 32 `bg-indigo` bar matches), Automation
+  list+detail (Checklist DM, search placeholder), edit prefill (CHECK),
+  Posts copy, Login/Register Password. Dev log: zero runtime errors.
+- Dependencies: `git diff --stat` shows only the 4 settings files — no
+  package.json/lockfile changes.
+- 3 initial assertion "FAILs" were test bugs (React `<!-- -->` text-node
+  separators ×2, and `bg-primary` vs the documented `bg-indigo-*` chart
+  exception) — corrected assertions all PASS; zero code bugs found.
+
+Known limitations:
+
+- Account form values are placeholder literals (no user/profile API
+  exists until Task 013/014) — clearly gated by the Save hint; no
+  client-side validation added because Save is unconditionally disabled
+  (validation UX would imply a working save).
+- Password fields are typeable but unsavable — same honest gate as
+  name/email; no strength meter/match checks (would imply flow).
+- Disconnect row only renders when an account exists; both Connect and
+  Disconnect are inert until Meta OAuth (Task 015).
+- Usage descriptors/hints are explanatory copy only — no quotas,
+  percentages, or limits beyond the model (per spec).
+- Date formatting uses server default locale conventions
+  (`toLocaleDateString("en-US", …)` explicit for the connected date);
+  no i18n layer (out of scope).
+- Interactions (hover/focus/disabled visuals) are structural/code-level
+  only — no browser automation in this environment.
+
+Deferred backend functionality:
+
+- Real profile save + password change (Task 013 auth + Task 014 API),
+  Meta OAuth connect/disconnect (Task 015), billing/plan/limits UI
+  (needs real quotas — post-V1), usage export.
+
+Next:
+
+Task 011 - Backend Foundation
 
 ## Task 009 - Analytics
 
