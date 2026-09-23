@@ -6,15 +6,28 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 017 - Automation Engine
+Current Task: Task 018 - BullMQ Delivery
 
-Last Completed Task: Task 016 - Meta Webhooks
+Last Completed Task: Task 017 - Automation Engine
 
-Next Task: Task 017 - Automation Engine
+Next Task: Task 018 - BullMQ Delivery
 
-Last Updated: 2026-09-23 (Auth confirmation bugfix; roadmap still at 017)
+Last Updated: 2026-09-23 (Task 017)
 
-Verification: 2026-09-23 auth confirmation bugfix PASSED — typecheck/
+Verification: 2026-09-23 Task 017 validation PASSED — typecheck/lint/
+build:api/build exit 0; signed webhook match → comment
+matched=true + automation_name=Giveaway Engine + matched_count=1 +
+deliveries private_dm+public_reply queued; duplicate webhook → still
+count=1, delivery_rows=2 (idempotent claim); non-match → matched=false;
+paused automation ignores keyword; case-insensitive contains
+("GIVEAWAY" matches keyword giveaway); bad signature → 403; member
+/comments/recent + /deliveries/recent 200 with matched shape (no token
+leak); analytics commentsMatched=2; web /inbox + /dashboard 200, anon
+inbox → login redirect; 0 API level 50/60 errors; secret values clean;
+servers stopped after validation. Next roadmap task: **Task 018 —
+BullMQ Delivery**.
+
+Prior verification (auth bugfix): 2026-09-23 auth confirmation bugfix PASSED — typecheck/
 lint/build:api/build exit 0; `/auth/confirm` 200 (working state SSR);
 login/register 200; authed dashboard/settings/inbox suite 200; anon
 protected → 307 `/login?next=`; authed `/login`+`/register` → 307
@@ -98,7 +111,7 @@ blocking anon); see the Task 012 record below.
 | 014 | API Integration | COMPLETE |
 | 015 | Meta OAuth | COMPLETE |
 | 016 | Meta Webhooks | COMPLETE |
-| 017 | Automation Engine | NOT STARTED |
+| 017 | Automation Engine | COMPLETE |
 | 018 | BullMQ Delivery | NOT STARTED |
 | 019 | Usage Tracking | NOT STARTED |
 | 020 | Security Hardening | NOT STARTED |
@@ -114,42 +127,118 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 017 - Automation Engine
+## Task 018 - BullMQ Delivery
 
 Status: NOT STARTED
 
 ### Objective
 
-Consume persisted comment events (Task 016), match active automation
-keyword rules, mark matches, and prepare delivery work — the brain
-between webhook ingest (016) and BullMQ DM send (018).
+Consume queued `deliveries` rows (Task 017 enqueue) and perform actual
+Instagram Graph API sends (private DM + optional public reply) with
+retry/failed accounting — the outbound half of comment → DM.
 
-### Requirements (derived from roadmap + deferral notes in 014–016 —
-confirm against the master prompt before starting)
+### Requirements (confirm against the master prompt before starting)
 
-- On comment persist (or a worker path), find workspace's **active**
-  automations whose `keyword` appears in comment text (case policy
-  documented honestly).
-- On match: set `comments.matched=true`, attach `automation_id` +
-  `automation_name`, increment `automations.matched_count`.
-- Non-match: leave matched=false (inbox shows Ignored).
-- Decide sync vs queue boundary with 018 (017 may enqueue; actual
-  Graph API DM send belongs to 018 unless master prompt says otherwise).
-- Idempotent: re-delivered webhook must not double-count matches.
-- Validation: typecheck/lint/build, end-to-end comment → match proof,
-  regressions, no secrets in web.
+- Process `deliveries` where `status=queued`.
+- Private DM + optional public reply via Graph API using the workspace
+  social account token (API env / service path only — never browser).
+- Update delivery status queued → sent/delivered/failed (+ error text).
+- Increment `automations.dm_sent_count` / `failed_count` as appropriate.
+- Idempotent: must not double-send on worker redelivery.
+- Decide Redis/BullMQ vs honest inline poll (017 documented no Redis —
+  same gap likely applies; document whichever path ships).
+- Validation: typecheck/lint/build, queued → sent/failed proof, regressions,
+  no secrets in web.
 
 ### Notes
 
-- Webhook already persists comments with matched=false; engine fills
-  the match fields. Keyword case (exact vs contains) — pick one,
-  document it, don't flip-flop.
-- BullMQ/Redis may still be absent in this environment — honest
-  inline path first if no Redis (document gap like Meta creds).
+- 017 already enqueues private_dm always + public_reply when configured;
+  recipient = commenter username. Graph send specifics (recipient id vs
+  username) may require IG professional account messaging API details —
+  document honestly if live send cannot be proven without Meta app perms.
 
 ---
 
 # Completed Tasks
+
+## Task 017 - Automation Engine
+
+Status: COMPLETE (2026-09-23)
+
+Completed:
+
+- **`apps/api/src/engine.ts` (new)** — `runCommentEngine(workspaceId,
+  igCommentId, text, log)` after every successful webhook persist
+  (inserted **or** duplicate — Meta retries safe):
+  1. Load comment (`id`, `post_id`, `username`, `matched`).
+  2. Load workspace **active** automations (`created_at.asc`; if
+     `comment.post_id` set, filter `post_id=` that post; if `post_id`
+     null while posts import pending, any active automation is eligible
+     — documented policy).
+  3. **Match policy: case-insensitive substring containment** —
+     `comment.text.toLowerCase().includes(keyword.toLowerCase())`.
+     `"GIVEAWAY"` matches keyword `giveaway`; `"give away"` (space) does
+     **not** match `giveaway`. First matching automation wins.
+  4. **Idempotent claim**: `PATCH comments SET matched, automation_id,
+     automation_name WHERE id=… AND matched=false` with
+     `return=representation` — empty result → already matched, no
+     double-count.
+  5. On winning claim: `matched_count = current + 1` (read-modify-write;
+     claim gate prevents this comment counting twice — no RPC migration),
+     then enqueue **deliveries** rows (`private_dm` always; `public_reply`
+     only when automation.public_reply non-empty), both `status=queued`.
+  6. Non-match: leave `matched=false` (inbox Ignored). Engine failure
+     after persist → webhook 502 so Meta retries (idempotent re-entry).
+- **`apps/api/src/webhooks.ts`** — after persist, call
+  `runCommentEngine`; log `outcome` + `engine`; failed engine → push
+  failure → 502.
+- **Sync/queue boundary (017 vs 018)**: engine runs **inline** in the
+  webhook request (no Redis/BullMQ in this environment). Enqueue =
+  insert `deliveries` queued rows. Actual Graph API send belongs to
+  **018**.
+- No new migration (uses 016 `comments`/`deliveries` as-is). Service
+  key only via API env `SUPABASE_SERVICE_ROLE_KEY` (never web).
+
+Validation:
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`,
+  `npm run build` — all exit 0.
+- E2E signed webhook (service + APP_SECRET test-app-secret-016):
+  - Matching comment → 200; `matched=true`, `automation_name=Giveaway
+    Engine`, `matched_count=1`, deliveries: private_dm + public_reply
+    queued for `e2e_follower`.
+  - Duplicate same comment → 200; `matched_count` still **1**;
+    delivery_rows still **2** (claim idempotent).
+  - Non-match text → `matched=false`.
+  - Paused automation + keyword text → `matched=false`, count unchanged.
+  - Case: text with `GIVEAWAY` → matched, count increments.
+  - Substring edge: `"give away"` (space) correctly does not match
+    keyword `giveaway` — policy is substring, not token-equality.
+  - Bad signature → 403 (016 regression).
+- Member API: `/comments/recent` shows matched comment + automation
+  name (no access_token leak); `/deliveries/recent` shows queued
+  private_dm; `/analytics/summary` `commentsMatched=2`.
+- Web: `/inbox` 200, `/dashboard` 200; anon `/inbox` → login redirect.
+- 0 API level 50/60 errors in engine run; secret values clean.
+
+Files:
+
+- apps/api/src/engine.ts (new)
+- apps/api/src/webhooks.ts (engine call after persist)
+- Tree.md, TASK.md
+
+Notes / known limits:
+
+- Redis/BullMQ still absent — inline path only; 018 may introduce queue
+  without changing match semantics.
+- If claim succeeds but delivery insert fails → webhook 502 → Meta retry
+  → engine sees `matched=true` → returns `already` without re-enqueue
+  (rare PostgREST blip; comment stays matched without delivery rows until
+  018 adds repair — document, don't silently double-send).
+- Graph API live send not proven here (no Meta messaging permissions in
+  environment) — 018's problem.
+
+## Task 016 - Meta Webhooks
 
 ## Bug Fix — Email Confirmation UX + Login Error + Hydration (after Task 016)
 

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { restService, serviceEnabled } from "./supabase";
+import { runCommentEngine } from "./engine";
 
 // Meta webhooks (Task 016): GET verify handshake + POST signature-checked
 // comment events → comments table. Meta servers have no session cookie —
@@ -158,9 +159,24 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         const outcome = await persistComment(workspaceId, igUserId, change.value, req.log);
         if (outcome === "failed") failures.push(change.value.comment_id ?? "?");
         if (outcome === "inserted" || outcome === "duplicate") {
+          // Engine is idempotent (claim on matched=false) — safe on Meta retries.
+          const engine = await runCommentEngine(
+            workspaceId,
+            change.value.comment_id ?? "",
+            change.value.text ?? "",
+            req.log,
+          );
+          if (engine === "failed") {
+            failures.push(change.value.comment_id ?? "?");
+          }
           req.log.info(
-            { igUserId, commentId: change.value.comment_id, outcome },
-            "webhook comment persisted",
+            {
+              igUserId,
+              commentId: change.value.comment_id,
+              outcome,
+              engine,
+            },
+            "webhook comment processed",
           );
         }
       }

@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Auth confirmation bugfix after Task 016)
+Last updated: 2026-09-23 (Task 017 — Automation Engine)
 
 ---
 
@@ -22,9 +22,10 @@ smmomo/
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   └── src/
 │   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads) + registerMetaRoutes + registerWebhookRoutes
+│   │       ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries (inline; no Redis)
 │   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe
-│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist (service_role, idempotent)
-│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook path only
+│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist → runCommentEngine (service_role, idempotent)
+│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine path only
 │   │       └── server.ts     Listen on PORT (default 4000)
 │   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
@@ -156,7 +157,8 @@ smmomo/
   `restService()` (service-role, webhook path only).
   `apps/api/src/meta.ts` → Instagram OAuth connect/callback/disconnect (Task 015)
   + best-effort webhook subscribe. `apps/api/src/webhooks.ts` → Meta verify
-  handshake + signed comment ingest (Task 016).
+  handshake + signed comment ingest → engine (Task 016–017).
+  `apps/api/src/engine.ts` → keyword match + delivery enqueue (Task 017).
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`
