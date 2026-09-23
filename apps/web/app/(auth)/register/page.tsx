@@ -7,6 +7,33 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
+// Map Supabase signup errors to safe copy — never surface raw provider text.
+function friendlySignupError(err: { message?: string; code?: string }): string {
+  const code = err.code ?? "";
+  const msg = (err.message ?? "").toLowerCase();
+  if (
+    code === "email_exists" ||
+    msg.includes("already registered") ||
+    msg.includes("already been registered")
+  ) {
+    return "An account with this email already exists. Try signing in.";
+  }
+  if (code === "weak_password" || msg.includes("password should be at least")) {
+    return "Password is too weak — use at least 8 characters.";
+  }
+  if (
+    code === "over_request_rate_limit" ||
+    code === "too_many_requests" ||
+    msg.includes("rate limit")
+  ) {
+    return "Too many attempts. Wait a moment and try again.";
+  }
+  if (code === "validation_failed" || msg.includes("invalid email")) {
+    return "Enter a valid email address.";
+  }
+  return "Something went wrong — try again.";
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +98,7 @@ export default function RegisterPage() {
                 },
               });
               if (err) {
-                setError(err.message);
+                setError(friendlySignupError(err));
                 setPending(false);
                 return;
               }

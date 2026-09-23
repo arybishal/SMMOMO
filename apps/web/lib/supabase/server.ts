@@ -16,6 +16,12 @@ export async function getServerSupabase() {
   }
   const cookieStore = await cookies();
   return createServerClient(url, key, {
+    // Secure cookies only in production (localhost is http:// — secure
+    // would drop the session cookie in local dev).
+    cookieOptions:
+      process.env.NODE_ENV === "production"
+        ? { secure: true, sameSite: "lax" }
+        : { sameSite: "lax" },
     cookies: {
       getAll() {
         return cookieStore.getAll();

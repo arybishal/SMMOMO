@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 019 — Usage Tracking)
+Last updated: 2026-09-23 (Task 020 — Security Hardening)
 
 ---
 
@@ -21,16 +21,17 @@ smmomo/
 │   │   ├── package.json      Workspace "api": dev/build/start/typecheck
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   ├── scripts/
-│   │   │   └── validate-usage.mjs  Task 019 validation harness (idempotency, date range, RLS, webhook, route sweep)
+│   │   │   ├── validate-usage.mjs  Task 019 validation harness (idempotency, date range, RLS, webhook, route sweep)
+│   │   │   └── validate-security.mjs  Task 020 security harness (authz, input, webhook sig, headers, RLS column probe, no stack leak)
 │   │   └── src/
-│   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
+│       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020) + CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
 │   │       ├── usage.ts      Usage service (019): recordUsageEvent (service-role, idempotent), usageIdempotencyKey, currentUsagePeriod/parseUsageRange, getWorkspaceUsage (end-user JWT + RLS)
 │   │       ├── admin.ts      Platform-admin routes (018A): GET/PUT /admin/integrations/meta + POST …/test (PLATFORM_ADMIN_EMAILS gate; secrets never in GET)
 │   │       ├── platform-config.ts  Meta config service (018A): AES-256-GCM encrypt + getMetaConfig() DB-first/env-fallback single source for OAuth + webhooks
 │   │       ├── delivery.ts   Delivery worker (018): inline poll claim queued→processing → Graph send → sent/requeue/failed + automation counters + recordUsageEvent on terminal sent/failed only (019)
 │   │       ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries + comment_matched usage (019 winning claim only)
 │   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe (credentials via getMetaConfig)
-│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist → runCommentEngine → comment_received usage (019 inserted only) (service_role, idempotent; tokens via getMetaConfig)
+│       │   ├── webhooks.ts   Meta webhooks: timing-safe GET verify handshake (020) + POST signature-checked comment persist → runCommentEngine → comment_received usage (019 inserted only) (service_role, idempotent; tokens via getMetaConfig)
 │   │       ├── supabase.ts   Cookie session → verify JWT (+email) → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery/platform_settings
 │   │       └── server.ts     Listen on PORT (default 4000) + startDeliveryWorker (018)
 │   │
@@ -133,7 +134,8 @@ smmomo/
 │       ├── 20260923190000_webhook_events.sql  comments + deliveries tables + posts.ig_media_id + member SELECT RLS (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923200000_delivery_worker.sql  deliveries status + processing + attempts/claimed_at + queued index (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923210000_platform_settings.sql  single-row platform Meta settings, RLS no policies, service-role only (APPLIED 2026-09-23 via supabase db push)
-│       └── 20260923220000_usage_events.sql  usage_events + unique idempotency + member SELECT RLS + 2 indexes (APPLIED 2026-09-23 via supabase db push)
+│       ├── 20260923220000_usage_events.sql  usage_events + unique idempotency + member SELECT RLS + 2 indexes (APPLIED 2026-09-23 via supabase db push)
+│       └── 20260923230000_security_hardening.sql  social_accounts column-level SELECT + workspace_id immutability triggers (APPLIED 2026-09-23 via supabase db push)
 │
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
@@ -179,6 +181,8 @@ smmomo/
   (encrypted `platform_settings`, DB-first/env-fallback) + admin-only
   GET/PUT/test routes (Task 018A) — single source for OAuth + webhooks.
   `apps/api/scripts/validate-usage.mjs` → Task 019 validation harness.
+  `apps/api/scripts/validate-security.mjs` → Task 020 security harness.
+  `docs/security.md` → Security model, residual risks, prod requirements.
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`
@@ -192,7 +196,8 @@ smmomo/
 - `apps/web/components/auth-result-bridge.tsx` → Root-layout client bridge:
   when Supabase Site URL lands on `/` with auth result params, forwards to
   `/auth/confirm` so the session is established and the user sees the state.
-- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor): foundation, bootstrap/automation writes, social OAuth columns, webhook events (comments/deliveries), delivery worker (`20260923200000`), platform settings (`20260923210000`), usage events (`20260923220000`).
+- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor): foundation, bootstrap/automation writes, social OAuth columns, webhook events (comments/deliveries), delivery worker (`20260923200000`), platform settings (`20260923210000`), usage events (`20260923220000`), security hardening (`20260923230000`).
+- `docs/security.md` → Task 020 security architecture + residual risks.
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.
 - `apps/web/types/index.ts` → Shared frontend domain types (match future API contracts).
 

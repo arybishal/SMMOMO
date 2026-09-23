@@ -250,6 +250,7 @@ cp .env.example .env
 | `PLATFORM_ENCRYPTION_KEY` | Active (API env) | AES-256-GCM key (64 hex or base64) for `platform_settings` secrets (Task 018A) |
 | `SUPABASE_SERVICE_ROLE_KEY` | API env only | Service-role key for webhook/engine/delivery/usage writes — never apps/web, never commit |
 | — | — | Usage events (Task 019): `usage_events` table is the authority for usage/billing metrics; `automations.*_count` remains analytics authority; no plan limits in V1 (`limit`/`remaining` null) |
+| — | — | Security hardening (Task 020): see `docs/security.md` — column-level `social_accounts` reads, timing-safe webhooks, rate limits, security headers, no stack leaks |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a

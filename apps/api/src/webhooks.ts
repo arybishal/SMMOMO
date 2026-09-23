@@ -29,6 +29,17 @@ interface WebhookBody {
   object?: string;
 }
 
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  try {
+    return timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
 function verifySignature(
   raw: string,
   header: string | undefined,
@@ -119,7 +130,11 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         .code(503)
         .send({ statusCode: 503, error: "Service Unavailable", message: "webhook not configured" });
     }
-    if (q["hub.mode"] === "subscribe" && q["hub.verify_token"] === cfg.webhookVerifyToken) {
+    if (
+      q["hub.mode"] === "subscribe" &&
+      typeof q["hub.verify_token"] === "string" &&
+      timingSafeStringEqual(q["hub.verify_token"], cfg.webhookVerifyToken)
+    ) {
       return reply.type("text/plain").send(q["hub.challenge"] ?? "");
     }
     return reply.code(403).send({ statusCode: 403, error: "Forbidden" });

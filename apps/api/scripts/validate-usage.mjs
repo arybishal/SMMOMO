@@ -8,8 +8,20 @@ const API = "http://localhost:4000";
 const WEB = "http://localhost:3000";
 const SUPA = "https://etwuqthopqrzffdgvhqs.supabase.co";
 const PUB = "sb_publishable_ptMvNEqjdAJoPys6NbpleA_Yu0swj50";
+// Test credentials come from env — never hardcode passwords in the repo.
 const APP_SECRET = process.env.META_APP_SECRET || "test-app-secret-016";
-const ADMIN = { email: "task013-probe@smmomo-test.com", password: "Task013-Probe-Pw!2026" };
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || "";
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || "";
+const NONADMIN_EMAIL = process.env.TEST_NONADMIN_EMAIL || "";
+const NONADMIN_PASSWORD = process.env.TEST_NONADMIN_PASSWORD || "";
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.error(
+    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD in the environment before running this harness.",
+  );
+  process.exit(2);
+}
+const ADMIN = { email: ADMIN_EMAIL, password: ADMIN_PASSWORD };
+const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || "smmomo-verify-016";
 
 let pass = 0;
 let fail = 0;
@@ -290,7 +302,8 @@ async function main() {
   // 10. RLS: another user's JWT cannot read this workspace's usage
   // create/use non-admin if present
   try {
-    const non = await login("task018a-nonadmin@smmomo-test.com", "Task018a-NonAdmin-Pw!2026");
+    if (!NONADMIN_EMAIL || !NONADMIN_PASSWORD) throw new Error("skip");
+    const non = await login(NONADMIN_EMAIL, NONADMIN_PASSWORD);
     // non-admin has own workspace — should not see wsId events via RLS
     const key2 = await serviceKey();
     // Actually verify via PostgREST with non-admin token
@@ -324,7 +337,7 @@ async function main() {
 
   // 14. webhook GET still works
   const gwh = await req(
-    `${API}/webhooks/instagram?hub.mode=subscribe&hub.verify_token=smmomo-verify-016&hub.challenge=abc`,
+    `${API}/webhooks/instagram?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(VERIFY_TOKEN)}&hub.challenge=abc`,
   );
   ok("webhook GET", gwh.status === 200 || gwh.status === 403, String(gwh.status));
 

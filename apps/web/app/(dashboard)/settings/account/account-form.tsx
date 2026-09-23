@@ -40,7 +40,31 @@ export function AccountForm({
         ...(newPassword ? { password: newPassword } : {}),
       });
       if (error) {
-        setStatus({ kind: "error", message: error.message });
+        const msg = (error.message ?? "").toLowerCase();
+        const code = error.code ?? "";
+        if (
+          code === "weak_password" ||
+          msg.includes("password should be at least")
+        ) {
+          setStatus({
+            kind: "error",
+            message: "Password is too weak — use at least 8 characters.",
+          });
+        } else if (
+          code === "over_request_rate_limit" ||
+          code === "too_many_requests" ||
+          msg.includes("rate limit")
+        ) {
+          setStatus({
+            kind: "error",
+            message: "Too many attempts. Wait a moment and try again.",
+          });
+        } else {
+          setStatus({
+            kind: "error",
+            message: "Something went wrong — try again.",
+          });
+        }
         return;
       }
       setNewPassword("");

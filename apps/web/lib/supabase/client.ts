@@ -12,5 +12,10 @@ export function getBrowserSupabase() {
       "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (see .env.example)",
     );
   }
-  return createBrowserClient(url, key);
+  return createBrowserClient(url, key, {
+    cookieOptions:
+      process.env.NODE_ENV === "production"
+        ? { secure: true, sameSite: "lax" }
+        : { sameSite: "lax" },
+  });
 }

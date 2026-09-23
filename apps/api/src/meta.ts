@@ -179,7 +179,8 @@ async function upsertConnection(
   const created = await rest(user, "social_accounts", {
     method: "POST",
     body,
-    prefer: "return=representation",
+    // minimal: avoid RETURNING access_token (column not SELECT-able by members).
+    prefer: "return=minimal",
   });
   if (created.status >= 400) {
     throw new Error(`social account insert failed (${created.status})`);

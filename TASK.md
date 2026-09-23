@@ -6,15 +6,36 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 019 - Usage Tracking
+Current Task: Task 021 - Testing
 
-Last Completed Task: Task 019 - Usage Tracking
+Last Completed Task: Task 020 - Security Hardening
 
-Next Task: Task 020 - Security Hardening
+Next Task: Task 021 - Testing
 
-Last Updated: 2026-09-23 (Task 019)
+Last Updated: 2026-09-23 (Task 020)
 
-Verification: 2026-09-23 Task 019 validation PASSED — typecheck/lint/
+Verification: 2026-09-23 Task 020 validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260923230000_security_hardening.sql`
+APPLIED via `supabase db push` (column-level SELECT on social_accounts —
+members get id/workspace_id/platform/username/name/followers/status/
+connected_at only, access_token/refresh_token revoked; workspace_id
+immutability triggers on automations + social_accounts); timing-safe
+webhook verify-token compare; OAuth token insert return=minimal; Fastify
+setErrorHandler (generic 5xx, no stack) + onSend headers (nosniff,
+no-referrer, DENY); Next security headers (nosniff/DENY/referrer/
+permissions-policy/HSTS prod); in-process rate limit (webhooks POST
+60/min/IP, admin non-GET 30/min/IP); automation field length caps;
+friendly signup/account errors (no raw provider text); production cookies
+secure+lax sameSite; .gitignore env patterns broadened; validate-usage
+creds from env (no hardcoded passwords in harness); Task password removed
+from TASK.md (rotate on hosted project); docs/security.md written;
+validate-security.mjs 22/22 PASS; validate-usage.mjs 32/32 PASS; secret
+scan: only historical TASK.md password hit — removed this task; npm audit
+0 vulnerabilities; residual risks documented (IG token plaintext at rest,
+shared rate-limit store multi-instance, full CSP needs third-party
+inventory, automations.post_id cross-workspace FK); Task 021 next.
+
+Prior verification (Task 019): 2026-09-23 Task 019 validation PASSED —
 build:api/build exit 0; migration `20260923220000_usage_events.sql`
 APPLIED via `supabase db push`; `usage_events` table with unique
 (workspace_id, event_type, idempotency_key) + member SELECT RLS (no
@@ -198,17 +219,98 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 020 - Security Hardening
+## Task 021 - Testing
 
 Status: NOT STARTED
 
 ### Objective
 
-TODO — read master prompt §security / Task 020 notes before implementing.
+TODO — test/tooling pass per roadmap (see Task 020 notes / master prompt).
 
 ### Requirements
 
 - See master prompt; do not invent scope.
+
+---
+
+# Completed Tasks
+
+## Task 020 - Security Hardening
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 021.
+
+### Objective (from spec)
+
+Systematic security audit + minimal defense-in-depth fixes across env/
+secrets, auth/authz, Supabase clients, RLS, input validation, injection,
+webhooks, OAuth, CSRF, rate limiting, usage tracking, error leakage,
+headers, deps, logging — document residual risks; no redesign, no RLS
+weakening, no service-role exposure, no client-side checks replacing
+server logic.
+
+### Completed
+
+- **Audit:** full read-only pass (env/secrets, auth/authz, Supabase
+  clients, RLS, validation, injection, webhooks, OAuth, CSRF, rate limit,
+  headers, logging, deps, uploads, web trust).
+- **`.gitignore`:** `.env` / `.env.*` (with `!.env.example`).
+- **Webhooks:** timing-safe verify-token compare
+  (`timingSafeStringEqual`).
+- **OAuth:** token insert `prefer: return=minimal` (no RETURNING
+  access_token).
+- **API `app.ts`:** `setErrorHandler` (generic 5xx, no stack/PII);
+  onSend security headers (x-content-type-options, referrer-policy,
+  x-frame-options); minimal in-process rate limit (webhooks POST
+  60/min/IP, admin non-GET 30/min/IP — ponytail: Map+interval, not a
+  plugin); automation field length caps (name 200, keyword 120,
+  privateReply 4000, publicReply 1000).
+- **Web:** `next.config.ts` security headers (nosniff, DENY, referrer,
+  permissions-policy, HSTS prod-only); register + account friendly error
+  mapping (no raw provider text); Supabase cookieOptions `secure:true` +
+  `sameSite:"lax"` in production.
+- **Migration `20260923230000_security_hardening.sql` APPLIED:**
+  REVOKE table SELECT on social_accounts from authenticated + column
+  GRANT safe columns only; `prevent_workspace_reassign()` triggers on
+  automations + social_accounts.
+- **Harnesses:** `validate-usage.mjs` creds/verify-token from env (exit
+  2 if unset); `validate-security.mjs` new (auth 401s, bad input 400s,
+  webhook sig/handshake 403/200, no token/secret leak, headers, RLS
+  column probe, no stack leak).
+- **Docs:** `docs/security.md` (auth model, clients, service-role
+  rationale, RLS, webhook, OAuth, usage, headers, rate limit, validation,
+  residual risks, prod requirements).
+- **Secret hygiene:** Task 013 password removed from TASK.md (rotate on
+  hosted project); harness passwords only via session env.
+
+### Validation
+
+- typecheck / lint / build:api / build (web) exit 0.
+- Migration applied via `npx supabase db push`.
+- API `/health` 200 with security headers; web :3000 200.
+- `node apps/api/scripts/validate-security.mjs` → **22/22 PASS**.
+- `node apps/api/scripts/validate-usage.mjs` → **32/32 PASS**.
+- Secret scan: 0 real secrets (Task password removed); `npm audit` 0
+  high/critical (0 total vulnerabilities).
+
+### Residual risks (documented, not fixed here)
+
+- IG access/refresh tokens plaintext at rest in social_accounts (medium)
+  — encrypt-at-rest follow-up.
+- In-process rate-limit store (multi-instance needs shared store).
+- Full CSP needs third-party asset inventory before shipping.
+- `automations.post_id` cross-workspace FK (low).
+
+### Files changed
+
+- .gitignore
+- apps/api/src/app.ts, webhooks.ts, meta.ts
+- apps/api/scripts/validate-usage.mjs, validate-security.mjs (new)
+- apps/web/next.config.ts, app/(auth)/register/page.tsx,
+  app/(dashboard)/settings/account/account-form.tsx,
+  lib/supabase/server.ts, lib/supabase/client.ts, proxy.ts
+- supabase/migrations/20260923230000_security_hardening.sql (new, APPLIED)
+- docs/security.md (new)
+- TASK.md, Tree.md
 
 ---
 
@@ -1257,8 +1359,10 @@ Notes:
 - Hosted `mailer_confirm` stays false→email confirmation required
   (flipped true only transiently during test-user provisioning, then
   restored — re-verify it if signup misbehaves). Test user for future
-  E2E: `task013-probe@smmomo-test.com` / `Task013-Probe-Pw!2026`
-  (test-only project; never reuse this pattern for real secrets).
+  E2E: `task013-probe@smmomo-test.com` — password lives only in the
+  session env (`TEST_ADMIN_PASSWORD`), never in the repo (Task 020).
+  Rotate that password on the hosted project (it previously appeared
+  in this file).
 - No password-recovery UI (no fake link); Instagram pill still static
   (015); name/password updates touch only Auth user data — no app
   tables (014+).

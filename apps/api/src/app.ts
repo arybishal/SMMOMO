@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import {
   authed,
@@ -127,14 +127,99 @@ function uuidOk(id: string): boolean {
   );
 }
 
+// Minimal fixed-window rate limit (in-process). No Redis in this env —
+// production multi-instance deploys need a shared store (documented in
+// docs/security.md). ponytail: Map + interval, not a plugin dependency.
+function rateLimit(
+  app: FastifyInstance,
+  opts: {
+    max: number;
+    windowMs: number;
+    match: (path: string, method: string) => boolean;
+    keys: (req: FastifyRequest) => string;
+  },
+): void {
+  const hits = new Map<string, { n: number; t: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of hits) {
+      if (now - v.t > opts.windowMs) hits.delete(k);
+    }
+  }, opts.windowMs).unref?.();
+  app.addHook("onRequest", async (req, reply) => {
+    const path = req.url.split("?")[0];
+    if (!opts.match(path, req.method)) return;
+    const key = opts.keys(req);
+    const now = Date.now();
+    let bucket = hits.get(key);
+    if (!bucket || now - bucket.t > opts.windowMs) {
+      bucket = { n: 0, t: now };
+      hits.set(key, bucket);
+    }
+    bucket.n += 1;
+    if (bucket.n > opts.max) {
+      await reply.code(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "rate limit exceeded",
+      });
+      return reply;
+    }
+  });
+}
+
 export async function buildApp() {
   const app = Fastify({ logger: true });
+
+  // Client-facing errors: no stack traces or internal details.
+  app.setErrorHandler((err, req, reply) => {
+    const e = err as { statusCode?: number; message?: string };
+    const status =
+      typeof e.statusCode === "number" && e.statusCode >= 400
+        ? e.statusCode
+        : 500;
+    if (status >= 500) {
+      req.log.error({ err }, "unhandled error");
+    }
+    reply.code(status).send({
+      statusCode: status,
+      error: status >= 500 ? "Internal Server Error" : "Bad Request",
+      message:
+        status >= 500
+          ? "Internal error"
+          : (e.message ?? "Bad Request"),
+    });
+  });
+
+  // Minimal security headers on every API response (API serves JSON only —
+  // no HTML, so CSP/frame-ancestors belong on the Next app).
+  app.addHook("onSend", async (_req, reply, payload) => {
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("referrer-policy", "no-referrer");
+    reply.header("x-frame-options", "DENY");
+    return payload;
+  });
 
   // Credentialed cross-origin from the web app (localhost:3000 → :4000):
   // a concrete origin + credentials, never `*` with cookies.
   await app.register(cors, {
     origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
     credentials: true,
+  });
+
+  // Abuse-sensitive surfaces only: webhook ingest (HMAC already gates it —
+  // this bounds flood cost) and platform-admin config writes.
+  rateLimit(app, {
+    max: 60,
+    windowMs: 60_000,
+    match: (path, method) => path.startsWith("/webhooks/") && method === "POST",
+    keys: (req) => req.ip,
+  });
+  rateLimit(app, {
+    max: 30,
+    windowMs: 60_000,
+    match: (path, method) => path.startsWith("/admin/") && method !== "GET",
+    keys: (req) => req.ip,
   });
 
   // Keep the raw body for webhook HMAC (X-Hub-Signature-256) while still
@@ -279,7 +364,11 @@ export async function buildApp() {
       !uuidOk(postId) ||
       (publicReply !== null &&
         publicReply !== undefined &&
-        typeof publicReply !== "string")
+        typeof publicReply !== "string") ||
+      keyword.length > 120 ||
+      privateReply.length > 4000 ||
+      (typeof publicReply === "string" && publicReply.length > 1000) ||
+      (typeof name === "string" && name.length > 200)
     ) {
       return reply.code(400).send({
         statusCode: 400,
@@ -346,15 +435,46 @@ export async function buildApp() {
     }
     const body = req.body ?? {};
     const patch: Record<string, unknown> = {};
-    if (typeof body.name === "string" && body.name.trim() !== "")
+    if (typeof body.name === "string" && body.name.trim() !== "") {
+      if (body.name.length > 200) {
+        return reply.code(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "name too long",
+        });
+      }
       patch.name = body.name.trim();
-    if (typeof body.keyword === "string" && body.keyword.trim() !== "")
+    }
+    if (typeof body.keyword === "string" && body.keyword.trim() !== "") {
+      if (body.keyword.length > 120) {
+        return reply.code(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "keyword too long",
+        });
+      }
       patch.keyword = body.keyword.trim();
-    if (typeof body.privateReply === "string" && body.privateReply.trim() !== "")
+    }
+    if (typeof body.privateReply === "string" && body.privateReply.trim() !== "") {
+      if (body.privateReply.length > 4000) {
+        return reply.code(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "privateReply too long",
+        });
+      }
       patch.private_reply = body.privateReply.trim();
-    if (typeof body.publicReply === "string")
+    }
+    if (typeof body.publicReply === "string") {
+      if (body.publicReply.length > 1000) {
+        return reply.code(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "publicReply too long",
+        });
+      }
       patch.public_reply = body.publicReply === "" ? null : body.publicReply;
-    else if (body.publicReply === null) patch.public_reply = null;
+    } else if (body.publicReply === null) patch.public_reply = null;
     if (typeof body.status === "string") {
       if (!AUTOMATION_STATUS.has(body.status)) {
         return reply.code(400).send({
