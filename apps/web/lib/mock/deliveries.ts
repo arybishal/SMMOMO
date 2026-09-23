@@ -1,0 +1,58 @@
+import type { MessageDelivery } from "@/types";
+
+export const mockDeliveries: MessageDelivery[] = [
+  {
+    id: "d_1",
+    commentId: "c_1",
+    recipient: "mia.builds",
+    kind: "private_dm",
+    status: "delivered",
+    error: null,
+    createdAt: "2026-09-23T08:42:20Z",
+  },
+  {
+    id: "d_2",
+    commentId: "c_1",
+    recipient: "mia.builds",
+    kind: "public_reply",
+    status: "delivered",
+    error: null,
+    createdAt: "2026-09-23T08:42:24Z",
+  },
+  {
+    id: "d_3",
+    commentId: "c_2",
+    recipient: "dev.nisha",
+    kind: "private_dm",
+    status: "sent",
+    error: null,
+    createdAt: "2026-09-23T08:17:18Z",
+  },
+  {
+    id: "d_4",
+    commentId: "c_4",
+    recipient: "sana.studio",
+    kind: "private_dm",
+    status: "failed",
+    error: "Meta API: recipient cannot receive messages (24h window).",
+    createdAt: "2026-09-23T07:31:22Z",
+  },
+  {
+    id: "d_5",
+    commentId: "c_6",
+    recipient: "lena.frames",
+    kind: "private_dm",
+    status: "delivered",
+    error: null,
+    createdAt: "2026-09-22T22:14:19Z",
+  },
+  {
+    id: "d_6",
+    commentId: "c_6",
+    recipient: "lena.frames",
+    kind: "public_reply",
+    status: "queued",
+    error: null,
+    createdAt: "2026-09-22T22:14:25Z",
+  },
+];
