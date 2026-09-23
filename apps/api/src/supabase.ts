@@ -1,14 +1,15 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 // Public project config — same values documented in the repo's .env.example.
-// End-user JWTs + RLS are the isolation boundary: this service never holds a
-// service_role / sb_secret_ key (that rule lives in .env.example).
+// Product routes: end-user JWTs + RLS. Webhook path (016) only: service_role
+// from API env (session/process env, never apps/web, never a committed file).
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
   "https://etwuqthopqrzffdgvhqs.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "sb_publishable_ptMvNEqjdAJoPys6NbpleA_Yu0swj50";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const PROJECT_REF = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
 const SESSION_COOKIE = `sb-${PROJECT_REF}-auth-token`;
@@ -126,6 +127,50 @@ export async function rest<T>(
     return { status: res.status, data: null, errorCode };
   }
   // 204 / empty body (DELETE without Prefer: return) — no JSON to parse.
+  if (res.status === 204) {
+    return { status: res.status, data: null, errorCode: null };
+  }
+  const text = await res.text();
+  if (!text) {
+    return { status: res.status, data: null, errorCode: null };
+  }
+  return { status: res.status, data: JSON.parse(text) as T, errorCode: null };
+}
+
+// Service-role PostgREST (webhook engine path only — bypasses RLS by design).
+// Key must come from API process env; absent key → explicit 503, never anon fallback.
+export function serviceEnabled(): boolean {
+  return Boolean(SUPABASE_SERVICE_ROLE_KEY);
+}
+
+export async function restService<T>(
+  path: string,
+  init?: { method?: string; body?: unknown; prefer?: string },
+): Promise<{ status: number; data: T | null; errorCode: string | null }> {
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    return { status: 503, data: null, errorCode: "service_key_missing" };
+  }
+  const headers: Record<string, string> = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+  if (init?.prefer) headers.Prefer = init.prefer;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: init?.method ?? "GET",
+    headers,
+    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+  if (!res.ok) {
+    let errorCode: string | null = null;
+    try {
+      const body = (await res.json()) as { code?: string };
+      errorCode = body.code ?? null;
+    } catch {
+      // non-JSON error body — status alone is enough
+    }
+    return { status: res.status, data: null, errorCode };
+  }
   if (res.status === 204) {
     return { status: res.status, data: null, errorCode: null };
   }

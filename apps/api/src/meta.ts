@@ -187,6 +187,36 @@ async function upsertConnection(
   }
 }
 
+// Best-effort app-level webhook subscription (Task 016). Fails open: no Meta
+// app / wrong env → connect still succeeds; operator can subscribe in the
+// Meta dashboard (documented in README).
+const WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
+
+async function subscribeWebhookTopics(log: FastifyInstance["log"]): Promise<void> {
+  if (!META_APP_ID || !META_APP_SECRET || !WEBHOOK_VERIFY_TOKEN) return;
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v22.0/${META_APP_ID}/subscriptions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          object: "instagram",
+          callback_url: `${API_ORIGIN}/webhooks/instagram`,
+          verify_token: WEBHOOK_VERIFY_TOKEN,
+          access_token: `${META_APP_ID}|${META_APP_SECRET}`,
+          fields: "comments,messages",
+        }),
+      },
+    );
+    if (!res.ok) {
+      log.warn({ status: res.status }, "instagram webhook subscribe failed");
+    }
+  } catch (err) {
+    log.warn({ err }, "instagram webhook subscribe failed");
+  }
+}
+
 export function registerMetaRoutes(app: FastifyInstance): void {
   // Browser navigation (not XHR) — friendly redirect when unconfigured.
   app.get("/social-accounts/instagram/connect", async (req, reply) => {
@@ -253,6 +283,7 @@ export function registerMetaRoutes(app: FastifyInstance): void {
         exchanged.profile,
         exchanged.token,
       );
+      await subscribeWebhookTopics(req.log);
       return webRedirect(reply, "/settings/social-accounts", {
         oauth: "connected",
       });

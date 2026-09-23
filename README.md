@@ -245,7 +245,8 @@ cp .env.example .env
 | `META_APP_ID` | Active (API env) | Instagram API with Instagram Login app id (Task 015) |
 | `META_APP_SECRET` | Active (API env) | Meta app secret — apps/api only, never the web app |
 | `META_REDIRECT_URI` | Active (API env) | OAuth callback (default `http://localhost:4000/social-accounts/instagram/callback`) |
-| `META_WEBHOOK_VERIFY_TOKEN` | Reserved | Webhook verification handshake secret (Task 016) |
+| `META_WEBHOOK_VERIFY_TOKEN` | Active (API env) | Webhook verification handshake secret (Task 016) |
+| `SUPABASE_SERVICE_ROLE_KEY` | API env only | Service-role key for webhook comment writes — never apps/web, never commit |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a

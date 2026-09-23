@@ -6,24 +6,27 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 016 - Meta Webhooks
+Current Task: Task 017 - Automation Engine
 
-Last Completed Task: Task 015 - Meta OAuth
+Last Completed Task: Task 016 - Meta Webhooks
 
-Next Task: Task 016 - Meta Webhooks
+Next Task: Task 017 - Automation Engine
 
-Last Updated: 2026-09-23 (Task 015)
+Last Updated: 2026-09-23 (Task 016)
 
-Verification: 2026-09-23 Task 015 validation PASSED — typecheck/lint/
-build/build:api exit 0; migration `20260923180000` applied via
-`supabase db push`; connect/callback honest redirects (not_configured
-without META creds, anon connect 401), forged state rejected, DELETE
-disconnect 200 (empty + after seed), member INSERT/DELETE policies
-proven live with token **not** leaked through API GET; web social-
-accounts Connect anchor + OAuth notices + no gated Task 015 copy;
-topbar pill gated on real `igConnected`; no-cookie redirects unchanged;
-9 authenticated routes 200; 0 new log errors; 0 secrets in source;
-servers stopped after validation.
+Verification: 2026-09-23 Task 016 validation PASSED — typecheck/lint/
+build/build:api exit 0; migration `20260923190000` applied via
+`supabase db push`; handshake good token → 200 challenge echo / bad
+token → 403 (with and without cookie); signed POST → 200 + durable
+comment row (DB count=1), duplicate POST → 200 `duplicate` (still
+count=1), bad/missing signature → 403, unknown ig_user_id → 200 ack
+with warn log (no phantom workspace); member `/comments/recent` → 200
+with probe shape (follower_probe, matched=false, postId empty until
+posts import), `/deliveries/recent` → `[]`, anon → 401; social GET
+no token/ig_user_id leak; web inbox shows probe comment, social
+accounts Connect/Disconnect live, 13 routes 200, no-cookie/bogus →
+`/login?next=`; 0 API level 50/60 errors; secret **values** clean in
+tracked sources; servers stopped after validation.
 
 Audit: 2026-09-23 read-only Supabase architecture audit PASSED — schema
 designed in `supabase/migrations/20260923120000_smmomo_foundation.sql`
@@ -80,7 +83,7 @@ blocking anon); see the Task 012 record below.
 | 013 | Authentication | COMPLETE |
 | 014 | API Integration | COMPLETE |
 | 015 | Meta OAuth | COMPLETE |
-| 016 | Meta Webhooks | NOT STARTED |
+| 016 | Meta Webhooks | COMPLETE |
 | 017 | Automation Engine | NOT STARTED |
 | 018 | BullMQ Delivery | NOT STARTED |
 | 019 | Usage Tracking | NOT STARTED |
@@ -97,43 +100,131 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 016 - Meta Webhooks
+## Task 017 - Automation Engine
 
 Status: NOT STARTED
 
 ### Objective
 
-Receive Meta/Instagram webhook events (comments, messages) so the
-automation engine (017+) can react in real time — verify handshake,
-persist events honestly, never trust unverified payloads.
+Consume persisted comment events (Task 016), match active automation
+keyword rules, mark matches, and prepare delivery work — the brain
+between webhook ingest (016) and BullMQ DM send (018).
 
-### Requirements (derived from the roadmap + deferral notes in Tasks
-014/015 — confirm against the master prompt before starting)
+### Requirements (derived from roadmap + deferral notes in 014–016 —
+confirm against the master prompt before starting)
 
-- Webhook verify handshake (`GET` hub.challenge + `META_WEBHOOK_
-  VERIFY_TOKEN` check) + signature validation on POST (app secret /
-  Meta signature header per current docs).
-- Subscribe relevant Instagram/webhook topics once a professional
-  account is connected (comments, messages/messaging_postbacks as the
-  product needs).
-- Land events into tables that Tasks 016+ own (`comments`/
-  `deliveries` or a dedicated events table — decide + migrate honestly;
-  do not invent fake rows). RLS membership scoping continues.
-- Idempotent handling (duplicate deliveries), honest 2xx only after
-  durable accept, structured logs.
-- Validation: typecheck/lint/build, handshake curl tests (good/bad
-  token), no secrets in web app, regressions on existing routes.
+- On comment persist (or a worker path), find workspace's **active**
+  automations whose `keyword` appears in comment text (case policy
+  documented honestly).
+- On match: set `comments.matched=true`, attach `automation_id` +
+  `automation_name`, increment `automations.matched_count`.
+- Non-match: leave matched=false (inbox shows Ignored).
+- Decide sync vs queue boundary with 018 (017 may enqueue; actual
+  Graph API DM send belongs to 018 unless master prompt says otherwise).
+- Idempotent: re-delivered webhook must not double-count matches.
+- Validation: typecheck/lint/build, end-to-end comment → match proof,
+  regressions, no secrets in web.
 
 ### Notes
 
-- Engine consumption (keyword match → queue DM) is Task 017+; 016 is
-  receive + persist + verify only unless the master prompt says more.
-- No Meta app in this environment → handshake/signature code ships
-  against env vars; document any operator-supplied credential gap.
+- Webhook already persists comments with matched=false; engine fills
+  the match fields. Keyword case (exact vs contains) — pick one,
+  document it, don't flip-flop.
+- BullMQ/Redis may still be absent in this environment — honest
+  inline path first if no Redis (document gap like Meta creds).
 
 ---
 
 # Completed Tasks
+
+## Task 016 - Meta Webhooks
+
+Status: COMPLETE
+
+Completed:
+
+- **Migration `20260923190000_webhook_events.sql` APPLIED**
+  (`supabase db push`): `comments` (workspace-scoped,
+  `unique (workspace_id, ig_comment_id)` for idempotency, nullable
+  `post_id` + `ig_media_id`, matched/automation fields for 017),
+  `deliveries` (ready for 017–018 engine rows), `posts.ig_media_id`
+  (nullable until content import), member SELECT-only RLS on both
+  tables (service_role writes bypass RLS from API env only).
+- **`apps/api/src/webhooks.ts`** — `GET /webhooks/instagram`
+  (hub.challenge handshake vs `META_WEBHOOK_VERIFY_TOKEN`; missing
+  token → 503, wrong token → 403); `POST /webhooks/instagram`
+  (HMAC-SHA256 `X-Hub-Signature-256` over raw body vs
+  `META_APP_SECRET` with `timingSafeEqual`; missing secret/service
+  key → 503; invalid/missing sig → 403; unknown ig_user_id → 200
+  ack + warn — Meta must stop retrying; comment → workspace via
+  `social_accounts.ig_user_id` → optional post join via
+  `posts.ig_media_id` → idempotent insert
+  (`on_conflict=workspace_id,ig_comment_id` +
+  `resolution=ignore-duplicates`); 200 only after durable accept,
+  502 on persist failure so Meta retries; structured logs for
+  inserted/duplicate/unknown/failed).
+- **`apps/api/src/supabase.ts`** — `restService()` +
+  `serviceEnabled()` (service-role PostgREST for webhook path only;
+  key from process env, absent key → explicit 503, never anon
+  fallback). Product routes remain end-user JWT + RLS.
+- **`apps/api/src/app.ts`** — `/webhooks/*` exempted from cookie
+  auth preHandler (Meta servers send no session); raw-body
+  content-type parser (keeps string for HMAC + JSON.parse; strips
+  UTF-8 BOM); `registerWebhookRoutes(app)`;
+  `/comments/recent` + `/deliveries/recent` now real RLS-scoped
+  table reads mapped to `CommentEvent` / `MessageDelivery` shapes
+  (were honest `[]` stubs).
+- **`apps/api/src/meta.ts`** — best-effort
+  `subscribeWebhookTopics()` after successful OAuth upsert
+  (Graph `/v22.0/{app-id}/subscriptions` comments+messages; fails
+  open with warn if app/env missing — dashboard subscribe remains
+  the operator fallback).
+- **`.env.example` / README** — `META_WEBHOOK_VERIFY_TOKEN` active
+  (API env); `SUPABASE_SERVICE_ROLE_KEY` documented as API-env-only,
+  never apps/web, never commit.
+
+Validation:
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`,
+  `npm run build` — all exit 0.
+- Migration: `npx supabase db push` → Finished, lists exactly
+  `20260923190000_webhook_events.sql`.
+- Handshake: good token → **200** body `12345abc` (challenge echo);
+  bad token → **403**; works with **no cookie**.
+- Signed POST: valid HMAC → **200** `{"ok":true}` + log
+  `outcome:inserted` + DB row `ig_comment_id` count **1**;
+  duplicate re-POST → **200** `duplicate` (count still **1**);
+  bad signature → **403**; missing signature → **403**;
+  unknown ig_user_id → **200** + `level:40` warn (no phantom
+  workspace, no comment row).
+- Member reads: `/comments/recent` → **200** with probe shape
+  (`username=follower_probe`, `matched=false`, `postId=""` until
+  posts import, `automationName=null`); `/deliveries/recent` →
+  **200** `[]`; anon → **401**; social GET → **200** without
+  `access_token`/`ig_user_id` (seeded `DUMMY_TOKEN_NOT_LEAKED`
+  absent from response).
+- Web: inbox page shows probe comment (Activity list has
+  `follower_probe`); social-accounts has Connect + Disconnect,
+  gated Task 015 copy absent; dashboard no service-key/token leak;
+  **13** routes **200** with cookie; no-cookie + bogus cookie →
+  `/login?next=…`.
+- Logs: API `level:50`/`level:60` = **0**; web error-ish = **0**.
+- Secret **values** (service key, app secret, PAT) scan clean across
+  tracked sources + `.env*` + `.next` — only documentation mentions
+  of the string `sb_secret_` remain (expected).
+
+Deferred honestly:
+
+- No live Meta app in this environment → real Meta → webhook traffic
+  unproven; handshake/signature code ships against env vars
+  (`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, service key in
+  API process env only).
+- Messages/messaging_postbacks not persisted yet (comments only);
+  add when 018+ needs inbound message rows.
+- Posts import still absent → webhook comments may have empty
+  `postId`/`postCaption` until content sync lands.
+
+---
 
 ## Task 015 - Meta OAuth
 

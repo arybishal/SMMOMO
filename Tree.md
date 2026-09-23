@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 015)
+Last updated: 2026-09-23 (Task 016)
 
 ---
 
@@ -21,9 +21,10 @@ smmomo/
 │   │   ├── package.json      Workspace "api": dev/build/start/typecheck
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   └── src/
-│   │       ├── app.ts        buildApp(): CORS (credentials) + auth preHandler + GET /health + product routes + registerMetaRoutes
-│   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert
-│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace() RPC
+│   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads) + registerMetaRoutes + registerWebhookRoutes
+│   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe
+│   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist (service_role, idempotent)
+│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook path only
 │   │       └── server.ts     Listen on PORT (default 4000)
 │   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
@@ -116,7 +117,8 @@ smmomo/
 │   └── migrations/
 │       ├── 20260923120000_smmomo_foundation.sql  workspaces → members/social_accounts → posts → automations + membership RLS (APPLIED 2026-09-23 via supabase db push; local == remote)
 │       ├── 20260923170000_bootstrap_and_automation_writes.sql  bootstrap_workspace() RPC + member INSERT/UPDATE on automations (APPLIED 2026-09-23 via supabase db push)
-│       └── 20260923180000_social_account_oauth_writes.sql  social_accounts token columns + member INSERT/UPDATE/DELETE (APPLIED 2026-09-23 via supabase db push)
+│       ├── 20260923180000_social_account_oauth_writes.sql  social_accounts token columns + member INSERT/UPDATE/DELETE (APPLIED 2026-09-23 via supabase db push)
+│       └── 20260923190000_webhook_events.sql  comments + deliveries tables + posts.ig_media_id + member SELECT RLS (APPLIED 2026-09-23 via supabase db push)
 │
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
@@ -143,11 +145,16 @@ smmomo/
 - `package.json` (root) → npm workspaces (`apps/*`, `packages/*`) and top-level scripts
   (`dev`/`build` for web, `dev:api`/`build:api` for the API, `lint`, `typecheck` across both).
 - `apps/api/src/app.ts` → Fastify `buildApp()`: CORS (origin `CORS_ORIGIN`, default
-  localhost:3000, credentials) + auth preHandler (session cookie → JWT → ensureWorkspace)
-  + product routes (posts, automations CRUD, social-accounts, analytics/usage summaries,
-  comments/deliveries empty lists). `apps/api/src/supabase.ts` → cookie parse + user
-  verification + PostgREST helper + bootstrap_workspace RPC.
-  `apps/api/src/meta.ts` → Instagram OAuth connect/callback/disconnect (Task 015).
+  localhost:3000, credentials) + raw-body application/json parser (HMAC for
+  webhooks) + auth preHandler (session cookie → JWT → ensureWorkspace; skips
+  `/health`, Instagram OAuth callback, `/webhooks/*`) + product routes (posts,
+  automations CRUD, social-accounts, analytics/usage summaries,
+  comments/deliveries **live table reads**). `apps/api/src/supabase.ts` → cookie
+  parse + user verification + PostgREST helper + bootstrap_workspace RPC +
+  `restService()` (service-role, webhook path only).
+  `apps/api/src/meta.ts` → Instagram OAuth connect/callback/disconnect (Task 015)
+  + best-effort webhook subscribe. `apps/api/src/webhooks.ts` → Meta verify
+  handshake + signed comment ingest (Task 016).
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`

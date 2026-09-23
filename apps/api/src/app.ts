@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import {
   authed,
@@ -7,6 +7,7 @@ import {
   rest,
 } from "./supabase";
 import { registerMetaRoutes } from "./meta";
+import { registerWebhookRoutes } from "./webhooks";
 
 // Keep aligned with apps/api/package.json "version" when bumping.
 const SERVICE = "smmomo-api";
@@ -72,7 +73,13 @@ function mapPost(row: PostRow) {
   };
 }
 
-function postCaption(post: AutomationRow["post"]): string {
+function postCaption(
+  post:
+    | { caption: string }
+    | { caption: string }[]
+    | null
+    | undefined,
+): string {
   if (!post) return "";
   if (Array.isArray(post)) return post[0]?.caption ?? "";
   return post.caption;
@@ -128,16 +135,40 @@ export async function buildApp() {
     credentials: true,
   });
 
+  // Keep the raw body for webhook HMAC (X-Hub-Signature-256) while still
+  // parsing JSON for every other route. Strip UTF-8 BOM if present (some
+  // clients send it; Meta does not — still safe for signature input).
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (_req, body, done) => {
+      let raw = typeof body === "string" ? body : body.toString("utf8");
+      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+      (_req as FastifyRequest & { rawBody?: string }).rawBody = raw;
+      if (raw === "") {
+        done(null, {});
+        return;
+      }
+      try {
+        done(null, JSON.parse(raw));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // Every product route: resolve the cookie session, then ensure the caller
   // has a workspace (idempotent bootstrap — RLS reads still gate all rows).
   // Exceptions: /health (public); Instagram OAuth callback (auth handled
-  // inline so an expired session mid-redirect becomes a login URL, not 401).
+  // inline so an expired session mid-redirect becomes a login URL, not 401);
+  // /webhooks/* (Meta servers send no cookie — signature + service_role gate).
   app.addHook("preHandler", async (req, reply) => {
     const path = req.url.split("?")[0];
     if (req.method === "GET" && path === "/health") return;
     if (req.method === "GET" && path === "/social-accounts/instagram/callback") {
       return;
     }
+    if (path.startsWith("/webhooks/")) return;
     const user = await requireUser(req, reply);
     if (!user) return reply;
     try {
@@ -438,15 +469,78 @@ export async function buildApp() {
   });
 
   // --- inbox -----------------------------------------------------------------
-  // comments/deliveries tables arrive with Tasks 016–019 — honest empties,
-  // never fabricated rows.
+  // comments arrive via webhook (016); deliveries rows land with engine (017+).
+  // Member-scoped reads via the caller's JWT (RLS).
 
-  app.get("/comments/recent", async () => []);
+  interface CommentRow {
+    id: string;
+    post_id: string | null;
+    username: string;
+    text: string;
+    matched: boolean;
+    automation_name: string | null;
+    created_at: string;
+    post?: { caption: string } | { caption: string }[] | null | undefined;
+  }
 
-  app.get("/deliveries/recent", async () => []);
+  interface DeliveryRow {
+    id: string;
+    comment_id: string | null;
+    recipient: string;
+    kind: "private_dm" | "public_reply";
+    status: "queued" | "sent" | "delivered" | "failed";
+    error: string | null;
+    created_at: string;
+  }
+
+  app.get("/comments/recent", async (req) => {
+    const result = await rest<CommentRow[]>(
+      authed(req),
+      "comments?select=id,post_id,username,text,matched,automation_name,created_at,post:posts(caption)&order=created_at.desc&limit=50",
+    );
+    if (result.status >= 400) {
+      throw Object.assign(new Error("failed to load comments"), {
+        statusCode: 502,
+      });
+    }
+    return (result.data ?? []).map((row) => ({
+      id: row.id,
+      postId: row.post_id ?? "",
+      postCaption: postCaption(row.post),
+      username: row.username,
+      text: row.text,
+      matched: row.matched,
+      automationName: row.automation_name,
+      createdAt: row.created_at,
+    }));
+  });
+
+  app.get("/deliveries/recent", async (req) => {
+    const result = await rest<DeliveryRow[]>(
+      authed(req),
+      "deliveries?select=id,comment_id,recipient,kind,status,error,created_at&order=created_at.desc&limit=50",
+    );
+    if (result.status >= 400) {
+      throw Object.assign(new Error("failed to load deliveries"), {
+        statusCode: 502,
+      });
+    }
+    return (result.data ?? []).map((row) => ({
+      id: row.id,
+      commentId: row.comment_id ?? "",
+      recipient: row.recipient,
+      kind: row.kind,
+      status: row.status,
+      error: row.error,
+      createdAt: row.created_at,
+    }));
+  });
 
   // Meta/Instagram OAuth connect + callback + disconnect (Task 015).
   registerMetaRoutes(app);
+
+  // Meta webhooks: verify handshake + signed event ingest (Task 016).
+  registerWebhookRoutes(app);
 
   return app;
 }
