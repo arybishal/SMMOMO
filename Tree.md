@@ -132,7 +132,8 @@ smmomo/
 │       ├── 20260923180000_social_account_oauth_writes.sql  social_accounts token columns + member INSERT/UPDATE/DELETE (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923190000_webhook_events.sql  comments + deliveries tables + posts.ig_media_id + member SELECT RLS (APPLIED 2026-09-23 via supabase db push)
 │       ├── 20260923200000_delivery_worker.sql  deliveries status + processing + attempts/claimed_at + queued index (APPLIED 2026-09-23 via supabase db push)
-│       └── 20260923210000_platform_settings.sql  single-row platform Meta settings, RLS no policies, service-role only (APPLIED 2026-09-23 via supabase db push)
+│       ├── 20260923210000_platform_settings.sql  single-row platform Meta settings, RLS no policies, service-role only (APPLIED 2026-09-23 via supabase db push)
+│       └── 20260923220000_usage_events.sql  usage_events + unique idempotency + member SELECT RLS + 2 indexes (APPLIED 2026-09-23 via supabase db push)
 │
 ├── packages/                 Reserved for genuinely shared code (empty for now)
 │   └── .gitkeep
