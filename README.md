@@ -37,7 +37,7 @@ When followers comment on an Instagram Post or Reel with a specified trigger key
 - **Social Media Managers & Agencies:** Manage scalable, automated outreach campaigns with real-time conversion and delivery metrics.
 
 > **Owner:** Bishal Aryal  
-> **Current Phase:** Frontend foundation with centralized mock API layer.
+> **Current Phase:** Frontend foundation complete (Tasks 001–010); backend scaffolded (`apps/api`).
 
 ---
 
@@ -149,7 +149,7 @@ sequenceDiagram
 | **Frontend** | [Next.js 15 (App Router)](https://nextjs.org/), [React 19](https://react.dev/) | Modern SSR/CSR hybrid application |
 | **Language** | [TypeScript 5](https://www.typescriptlang.org/) | Strict typing across workspaces |
 | **Styling** | [Tailwind CSS 3.4](https://tailwindcss.com/) | Responsive dark/light theme ready UI |
-| **Backend (Planned)** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | Ultra-low latency API service |
+| **Backend** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | Scaffolded in `apps/api` (health check + CORS; product routes = Task 014) |
 | **Database** | [Supabase](https://supabase.com/) (PostgreSQL) | Managed Postgres + Auth + RLS; migrations in `supabase/migrations/` |
 | **Queue (Planned)** | [Redis](https://redis.io/) & [BullMQ](https://bullmq.io/) | Distributed job processing |
 | **Containers (Planned)** | [Docker](https://www.docker.com/) & Docker Compose | Consistent local and production environments |
@@ -162,10 +162,13 @@ sequenceDiagram
 ```text
 smmomo/
 ├── apps/
-│   └── web/              # Next.js frontend application
-│       ├── app/          # App router pages (dashboard, automations, inbox, settings)
-│       ├── components/   # UI components and layout shells
-│       └── lib/          # API layer, mock datasets, Supabase clients
+│   ├── web/              # Next.js frontend application
+│   │   ├── app/          # App router pages (dashboard, automations, inbox, settings)
+│   │   ├── components/   # UI components and layout shells
+│   │   └── lib/          # API layer, mock datasets, Supabase clients
+│   └── api/              # Fastify backend service (scaffolded: CORS + /health)
+│       ├── src/          # server.ts (listen) + app.ts (buildApp)
+│       └── package.json  # Workspace "api": dev/build/start/typecheck
 ├── supabase/             # Supabase config + SQL migrations
 ├── packages/             # Shared libraries and types (reserved)
 ├── docs/                 # Architecture records and assets
@@ -203,7 +206,8 @@ npm install
 ### Running Locally
 
 ```bash
-npm run dev
+npm run dev        # web app → http://localhost:3000
+npm run dev:api    # Fastify API → http://localhost:4000 (optional during frontend-only work)
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) in your browser to view the application.
@@ -213,9 +217,11 @@ Visit [http://localhost:3000](http://localhost:3000) in your browser to view the
 | Command | Description |
 |---|---|
 | `npm run dev` | Starts the Next.js development server |
-| `npm run build` | Compiles the production build |
-| `npm run lint` | Runs ESLint validation |
-| `npm run typecheck` | Checks types with `tsc --noEmit` |
+| `npm run dev:api` | Starts the Fastify API (watch mode) |
+| `npm run build` | Compiles the production build (web) |
+| `npm run build:api` | Compiles the API TypeScript to `apps/api/dist` |
+| `npm run lint` | Runs ESLint validation (web) |
+| `npm run typecheck` | Checks types across the web + api workspaces |
 
 ---
 
@@ -229,7 +235,9 @@ cp .env.example .env
 
 | Variable | Status | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | Reserved | Base URL of the Fastify API (default: `http://localhost:4000`) |
+| `NEXT_PUBLIC_API_URL` | Active | Base URL of the Fastify API (default: `http://localhost:4000`) |
+| `PORT` | Active | Fastify API listen port (default: `4000`) |
+| `CORS_ORIGIN` | Active | Browser origin the API allows (default: `http://localhost:3000`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Active | Supabase project URL (database foundation) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Active | Supabase publishable key — browser-safe by design; never a `service_role`/`sb_secret_` key in the web app |
 | `DATABASE_URL` | Reserved | PostgreSQL connection URI (Supabase provides it if a direct SQL path is needed) |
@@ -279,8 +287,8 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 
 | Milestone | Status | Description |
 |---|---|---|
-| **Phase 1: Frontend Foundation** | 🟡 In Progress | Dashboard UI, automations management, mock data layer (Tasks 001–003 done) |
-| **Phase 2: Backend & Database** | ⚪ Not Started | Fastify server, PostgreSQL schema, BullMQ queue |
+| **Phase 1: Frontend Foundation** | ✅ Complete | All V1 screens on mocks (Tasks 001–010) |
+| **Phase 2: Backend & Database** | 🟡 In Progress | Fastify scaffold done (Task 011); schema apply + BullMQ queue pending |
 | **Phase 3: Meta API Integration** | ⚪ Not Started | Webhook verification, OAuth, Graph API DM dispatch |
 | **Phase 4: Production Readiness** | ⚪ Not Started | Docker orchestration, monitoring, analytics |
 

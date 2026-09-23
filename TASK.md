@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 011 - Backend Foundation
+Current Task: Task 012 - Database
 
-Last Completed Task: Task 010 - Settings
+Last Completed Task: Task 011 - Backend Foundation
 
-Next Task: Task 011 - Backend Foundation
+Next Task: Task 012 - Database
 
-Last Updated: 2026-09-23 (Task 010)
+Last Updated: 2026-09-23 (Task 011)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -71,7 +71,7 @@ changed no database objects, migrations, or RLS.
 | 008 | Inbox | COMPLETE |
 | 009 | Analytics | COMPLETE |
 | 010 | Settings | COMPLETE |
-| 011 | Backend Foundation | NOT STARTED |
+| 011 | Backend Foundation | COMPLETE |
 | 012 | Database | NOT STARTED |
 | 013 | Authentication | NOT STARTED |
 | 014 | API Integration | NOT STARTED |
@@ -93,42 +93,167 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 011 - Backend Foundation
+## Task 012 - Database
 
 Status: NOT STARTED
 
 ### Objective
 
-Scaffold the Phase 2 backend: an `apps/api` Fastify + TypeScript service
-that boots locally, answers a health check, and provides the project
-structure later tasks (012-018) plug into — without touching the web app's
-`USE_MOCK=true` seam or faking any product endpoints.
+Apply the already-authored foundation migration to the remote Supabase
+project, verify the schema + RLS match what the audit documented, and
+update every "NOT yet applied" note — no schema redesign.
 
-### Requirements (derived from README architecture + roadmap row "Backend
-Foundation" — confirm against the master prompt before starting)
+### Requirements (derived from the Task 007/audit state + roadmap row
+"Database" — confirm against the master prompt before starting)
 
-- Create `apps/api` workspace (Fastify + TypeScript, strict, Node >= 20),
-  wired into the existing npm workspaces (`apps/*` already matches).
-- `GET /health` returning status/version/uptime JSON; structured 404 for
-  unknown routes; sane default error handler (no stack leaks).
-- CORS restricted to `http://localhost:3000` (web dev origin); listen on
-  `PORT` env (default 4000 — matches `NEXT_PUBLIC_API_URL` docs).
-- Root scripts for running/typechecking the API alongside the web app;
-  `README.md`/`Tree.md`/env docs updated (`PORT` reserved).
-- No product endpoints (posts/automations/inbox/etc. belong to Task 014);
-  no DB/Redis/auth wiring (Tasks 012/013/018); web `USE_MOCK` unchanged;
-  no new deps beyond Fastify + its TS types.
+- Apply `supabase/migrations/20260923120000_smmomo_foundation.sql`
+  (5 tables: workspaces, workspace_members, social_accounts, posts,
+  automations + membership-scoped SELECT-only RLS) via
+  `npx supabase link --project-ref etwuqthopqrzffdgvhqs` + `npx supabase
+  db push`, or paste in the dashboard SQL Editor if no CLI access token.
+  **This may require user action/credentials — flag as a blocker if so.**
+- Verify after apply: tables exist, RLS enabled on all 5, policies are
+  membership-scoped SELECT-only, no `using (true)`, no extra objects;
+  publishable-key SELECT without membership returns 0 rows / denied.
+- No new migrations unless a gap is found (document if so); no seed data;
+  no `service_role`/`sb_secret_` anywhere in the repo; migration file
+  itself unchanged unless it fails to apply.
+- Update "authored; NOT yet applied" notes in Tree.md + this file's
+  audit record; web `USE_MOCK` stays true (data reads via API = Task 014).
 
 ### Notes
 
-- Web `lib/api/client.ts` already targets `http://localhost:4000` when
-  `USE_MOCK=false` — do not change its contract.
-- Monorepo convention: web keeps `tsc --noEmit` clean on a clean clone;
-  API should follow the same explicit-typing style.
+- Supabase env vars in `.env.local` give project ref + publishable key
+  (values never logged); applying needs a management token or dashboard
+  access — neither is committed.
+- RLS SELECT-only means even after apply, the app cannot write until
+  Tasks 013/014 add auth context + write policies — by design.
 
 ---
 
 # Completed Tasks
+
+## Task 011 - Backend Foundation
+
+Status: COMPLETE
+
+Completed:
+
+- **`apps/api` workspace created** (new — the repo's first backend
+  package): `package.json` (name `api`, scripts dev/build/start/typecheck),
+  `tsconfig.json` (strict, CommonJS, `tsc` → `dist/`, `types: ["node"]`),
+  `src/app.ts` (`buildApp()`), `src/server.ts` (listen). npm workspaces
+  (`apps/*`) picked it up; `npm install` added Fastify + @fastify/cors
+  (runtime) and typescript + tsx + @types/node (dev) — 0 vulnerabilities,
+  web lockfile deps untouched.
+- **`buildApp()`** — Fastify with `logger: true` (bundled pino; no extra
+  logging dep); `@fastify/cors` with `origin` = `process.env.CORS_ORIGIN
+  ?? "http://localhost:3000"`; **one route: `GET /health`** returning
+  `{status:"ok", service:"smmomo-api", version:"0.1.0", uptime, timestamp}`.
+  No custom 404/error handlers — Fastify's built-in JSON shape
+  (`{message, error, statusCode}`) is the sane default; stack only ever
+  leaves the process when `NODE_ENV !== "production"` (Fastify default).
+- **`server.ts`** — `PORT` env (default 4000, matching
+  `NEXT_PUBLIC_API_URL` docs), promise-chain boot with `process.exit(1)`
+  on failure (CommonJS — no top-level await).
+- **Root `package.json` scripts**: added `dev:api`, `build:api`;
+  `typecheck` now runs `npm run typecheck --workspaces --if-present`
+  (web + api in one command; web's own script unchanged).
+- **`.gitignore`**: added `dist/` (API `tsc` output).
+- **`.env.example`**: backend section now documents `PORT` /
+  `CORS_ORIGIN` (commented defaults that already match code defaults);
+  `NEXT_PUBLIC_API_URL` no longer labeled "backend not implemented".
+- **README**: layout tree shows `apps/api`; scripts table (dev:api,
+  build:api, cross-workspace typecheck); env table gains PORT +
+  CORS_ORIGIN (NEXT_PUBLIC_API_URL → Active); tech-stack backend row
+  no longer "(Planned)"; roadmap Phase 1 ✅ / Phase 2 🟡; owner phase
+  line updated.
+- **No product endpoints** — `/posts`, `/automations`, `/analytics` all
+  honest 404s (stub data would be fake functionality; routes = Task 014).
+- **Web untouched**: `USE_MOCK=true` seam, all UI, all mocks — zero web
+  source changes (git diff: only new `apps/api/**`, root config, docs).
+
+What it does:
+
+Phase 2 now has a running backend: `npm run dev:api` boots Fastify on
+:4000, `GET /health` answers with structured JSON, unknown routes 404 in
+Fastify's standard error shape, and CORS admits exactly the web dev
+origin (foreign origins never honored — browser-enforced mismatch). The
+web app keeps running fully on mocks; when Task 014 flips `USE_MOCK`,
+`NEXT_PUBLIC_API_URL` already points at this server. Structure is the
+plug-in point for Task 012 (DB) / 014 (routes).
+
+Files (key):
+
+- apps/api/package.json, apps/api/tsconfig.json (new workspace)
+- apps/api/src/app.ts, apps/api/src/server.ts (service)
+- package.json (root scripts), .gitignore, .env.example
+- README.md, Tree.md, TASK.md (documentation)
+
+API/mock changes:
+
+- None in the web app. The new API serves only `/health` — no product
+  routes, no DB/Redis/auth wiring (Tasks 012–014/018), no changes to
+  `apps/web/lib/api/client.ts` (its `API_BASE` contract preserved).
+
+Error & loading handling:
+
+- Listen/boot failures log + `process.exit(1)`; request errors/404s use
+  Fastify defaults (structured JSON; no stack in production). No custom
+  error middleware added — YAGNI until a route needs it.
+
+Validation:
+
+- `npm run typecheck` — passed (api + web workspaces in one run).
+- `npm run lint` — passed (web; API has no lint config yet — same
+  eslint-config-next would not fit Node code; lint for api deferred to
+  Task 021 testing task).
+- `npm run build` — passed (web, 15 routes unchanged).
+- `npm run build:api` — passed (`tsc` emitted `dist/app.js`, `dist/server.js`).
+- API runtime (built `node dist/server.js`): `GET /health` → 200 with all
+  5 fields (`status/service/version/uptime/timestamp`); `GET /nope` →
+  404 `{"message":"Route GET:/nope not found","error":"Not Found","statusCode":404}`;
+  `/posts` `/automations` `/analytics` `/healthz` → 404 (no stubs);
+  `POST /health` → 404 (route is GET-only); CORS: `Origin:
+  http://localhost:3000` reflected, `Origin: http://evil.example` never
+  honored (ACAO stays the configured origin — browser blocks mismatch).
+- `npm run dev:api` (tsx watch) — boots and serves `/health` (esbuild
+  postinstall warning was benign; tsx verified working).
+- Web + API coexistence: both servers up — `/settings`, `/settings/usage`,
+  `/dashboard`, `/analytics` 200 on :3000 while `/health` healthy on :4000.
+- Dev logs (web + api): zero runtime errors. Both servers stopped after
+  (3000 + 4000 free).
+- Two initial API-check "FAILs" were assertion bugs (PowerShell error
+  stream already consumed for the 404 body; string-origin CORS config
+  always emits its configured value — security property is "foreign
+  origin never honored", which holds). Corrected assertions PASS; zero
+  code bugs found.
+
+Known limitations:
+
+- No product routes, no DB connection, no auth, no queue — explicitly
+  Task 012+ scope; health check is the only endpoint.
+- `logger: true` logs every request at info level — fine for dev; log
+  level/redaction tuning belongs to Task 020/022 hardening.
+- CORS origin is a single value (string config) — sufficient for one web
+  origin; multi-origin needs (production domain) arrive with Task 022.
+- API has no ESLint config (root `lint` still web-only) — deliberate;
+  Node-oriented lint setup belongs with Task 021's test/tooling pass.
+- API `version` constant duplicates `package.json` "version" (noted in
+  source) — reading package.json at runtime would add file-path coupling
+  for two strings that change once per release.
+- `.env.example` PORT/CORS_ORIGIN are commented because defaults already
+  match; no dotenv loader wired (shell/`--env-file` can set them later).
+
+Deferred backend functionality:
+
+- Product routes + real data (Task 014), DB access (Task 012/014),
+  authentication middleware (Task 013), Meta OAuth/webhooks (015–016),
+  BullMQ worker (017–018), usage tracking (019), hardening (020).
+
+Next:
+
+Task 012 - Database
 
 ## Task 010 - Settings
 

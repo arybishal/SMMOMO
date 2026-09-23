@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 010)
+Last updated: 2026-09-23 (Task 011)
 
 ---
 
@@ -14,9 +14,16 @@ smmomo/
 ├── README.md                 Project documentation: what, install, run, architecture
 ├── TASK.md                   Task tracker + AI handoff file (read first)
 ├── Tree.md                   This file
-├── package.json              Monorepo root: npm workspaces + dev/build/lint/typecheck scripts
+├── package.json              Monorepo root: npm workspaces + dev/build/lint/typecheck (+ dev:api/build:api) scripts
 │
 ├── apps/
+│   ├── api/                  Fastify backend service (Task 011 scaffold: CORS + /health; product routes = Task 014)
+│   │   ├── package.json      Workspace "api": dev/build/start/typecheck
+│   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
+│   │   └── src/
+│   │       ├── app.ts        buildApp(): Fastify + CORS + GET /health (404/error responses = Fastify JSON defaults)
+│   │       └── server.ts     Listen on PORT (default 4000)
+│   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
 │       ├── package.json      Workspace "web": dev/build/start/lint/typecheck
 │       ├── tsconfig.json     Strict TS; "@/*" maps to apps/web root
@@ -125,7 +132,10 @@ smmomo/
 - `TASK.md` → WHAT is done / in progress / blocked / next. Read before any change.
 - `Tree.md` → WHERE everything is. Keep accurate.
 - `README.md` → General docs: install, run, env vars, architecture, design system.
-- `package.json` (root) → npm workspaces (`apps/*`, `packages/*`) and top-level scripts.
+- `package.json` (root) → npm workspaces (`apps/*`, `packages/*`) and top-level scripts
+  (`dev`/`build` for web, `dev:api`/`build:api` for the API, `lint`, `typecheck` across both).
+- `apps/api/src/app.ts` → Fastify `buildApp()`: CORS (origin `CORS_ORIGIN`, default
+  localhost:3000) + `GET /health`; product routes arrive with Task 014.
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; flip `USE_MOCK`
@@ -137,5 +147,5 @@ smmomo/
 
 ## Not created yet (by design — create when needed)
 
-`apps/web/hooks/`, `apps/web/stores/`, `apps/api/`, `prisma/`, `docker-compose.yml`,
+`apps/web/hooks/`, `apps/web/stores/`, `prisma/`, `docker-compose.yml`,
 `packages/shared/`, `packages/config/`, `docs/architecture/`.

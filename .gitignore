@@ -8,6 +8,9 @@ node_modules/
 out/
 build/
 
+# api (apps/api tsc output)
+dist/
+
 # testing
 coverage/
 
