@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 016)
+Last updated: 2026-09-23 (Auth confirmation bugfix after Task 016)
 
 ---
 
@@ -31,21 +31,22 @@ smmomo/
 │       ├── package.json      Workspace "web": dev/build/start/lint/typecheck
 │       ├── tsconfig.json     Strict TS; "@/*" maps to apps/web root
 │       ├── next.config.ts    Next.js config
-│       ├── proxy.ts           Next 16 proxy: cookie session refresh + route guard (app routes → /login?next=, authed off /login|/register)
+│       ├── proxy.ts           Next 16 proxy: cookie session refresh + route guard (app routes → /login?next=, authed off /login|/register only — /auth/confirm stays reachable)
 │       ├── postcss.config.mjs Tailwind v4 via @tailwindcss/postcss
 │       ├── eslint.config.mjs ESLint (eslint-config-next)
 │       ├── AGENTS.md         Auto-managed Next.js agent rules (do not hand-edit)
 │       ├── README.md         Pointer to root README
 │       │
 │       ├── app/
-│       │   ├── layout.tsx            Root layout: fonts, metadata ("SMMOMO")
+│       │   ├── layout.tsx            Root layout: fonts, metadata ("SMMOMO") + AuthResultBridge (forwards Supabase confirm tokens → /auth/confirm)
 │       │   ├── page.tsx              Landing page (hero, how-it-works, features, CTA)
 │       │   ├── globals.css           SMMOMO design-token foundation (@theme: semantic colors, radius, shadow; light theme only)
 │       │   ├── favicon.ico
 │       │   ├── (auth)/
 │       │   │   ├── layout.tsx        Auth shell: logo header, centered card area
-│       │   │   ├── login/page.tsx    Sign-in form: signInWithPassword, inline errors, safe ?next return to app
-│       │   │   └── register/page.tsx Sign-up form: signUp + name metadata; "Check your email" when confirmation required
+│       │   │   ├── login/page.tsx    Sign-in: signInWithPassword, friendly errors, unconfirmed→resend, ?verified=1 banner (Suspense+useSearchParams)
+│       │   │   ├── register/page.tsx Sign-up: signUp + name metadata; enhanced "Confirm your email" state
+│       │   │   └── auth/confirm/page.tsx  Email-confirmation callback: PKCE code / implicit tokens → verified | already | expired states
 │       │   └── (dashboard)/
 │       │       ├── layout.tsx        Force-dynamic DashboardShell (sidebar + topbar; session-scoped API data — never prerender)
 │       │       ├── dashboard/page.tsx       Connection, KPIs, usage, activity, deliveries, automations (+ empty states)
@@ -73,6 +74,7 @@ smmomo/
 │       │           └── usage/page.tsx             UsageSummary rows: period badge, per-metric hints, zero-guard, Analytics cross-link
 │       │
 │       ├── components/
+│       │   ├── auth-result-bridge.tsx  Client: if URL has Supabase auth tokens/?code=, replace() → /auth/confirm (silent on normal visits)
 │       │   ├── ui/
 │       │   │   ├── button.tsx        Button + buttonClasses() (Link reuses variant styles; token-driven variants)
 │       │   │   ├── card.tsx          Card, CardTitle (rounded-card/border/surface/shadow-card tokens)
@@ -162,6 +164,12 @@ smmomo/
   browser uses credentials include; 404 → undefined.
 - `apps/web/lib/supabase/` → Browser/server Supabase clients (@supabase/ssr
   cookie sessions, publishable key only).
+- `apps/web/app/(auth)/auth/confirm/page.tsx` → Processes email confirmation
+  results (PKCE `?code=` exchange or implicit `#access_token=` setSession) and
+  renders verified / already-verified / expired states. Mounted in (auth) layout.
+- `apps/web/components/auth-result-bridge.tsx` → Root-layout client bridge:
+  when Supabase Site URL lands on `/` with auth result params, forwards to
+  `/auth/confirm` so the session is established and the user sees the state.
 - `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor).
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.
 - `apps/web/types/index.ts` → Shared frontend domain types (match future API contracts).

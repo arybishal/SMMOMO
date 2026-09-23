@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { getBrowserSupabase } from "@/lib/supabase/client";
@@ -22,10 +22,88 @@ function safeNext(raw: string | null): string {
   return "/dashboard";
 }
 
+// Map Supabase auth errors to safe, user-facing copy. Never surface raw
+// implementation details (stack codes, provider messages).
+function friendlyLoginError(err: {
+  message?: string;
+  code?: string;
+}): { message: string; unconfirmed?: boolean } {
+  const code = err.code ?? "";
+  const msg = (err.message ?? "").toLowerCase();
+  if (
+    code === "invalid_credentials" ||
+    msg.includes("invalid login credentials") ||
+    code === "user_not_found" ||
+    msg.includes("user not found")
+  ) {
+    return { message: "Invalid email or password." };
+  }
+  if (
+    code === "email_not_confirmed" ||
+    msg.includes("email not confirmed") ||
+    msg.includes("email_not_confirmed")
+  ) {
+    return {
+      message:
+        "Your email hasn't been confirmed yet. Open the confirmation link we sent you, or resend it below.",
+      unconfirmed: true,
+    };
+  }
+  if (
+    code === "over_request_rate_limit" ||
+    code === "too_many_requests" ||
+    msg.includes("rate limit")
+  ) {
+    return {
+      message: "Too many attempts. Wait a moment and try again.",
+    };
+  }
+  return { message: "Something went wrong — try again." };
+}
+
 export default function LoginPage() {
+  // useSearchParams needs a Suspense boundary for static prerender.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const [pending, setPending] = useState(false);
+  const [resendState, setResendState] = useState<
+    { kind: "idle" | "pending" | "sent" | "failed"; message?: string }
+  >({ kind: "idle" });
+  const lastEmailRef = useRef("");
+  const banner =
+    searchParams.get("verified") === "1"
+      ? "Email verified — you can sign in to continue."
+      : null;
+
+  async function resendConfirmation(email: string) {
+    if (!email || resendState.kind === "pending") return;
+    setResendState({ kind: "pending" });
+    const { error: err } = await getBrowserSupabase().auth.resend({
+      type: "signup",
+      email,
+    });
+    if (err) {
+      setResendState({
+        kind: "failed",
+        message: "Could not resend right now. Try again shortly.",
+      });
+      return;
+    }
+    setResendState({
+      kind: "sent",
+      message: "Confirmation email sent. Check your inbox.",
+    });
+  }
 
   return (
     <div className="w-full max-w-sm">
@@ -40,15 +118,22 @@ export default function LoginPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
+            setUnconfirmed(false);
+            setResendState({ kind: "idle" });
             setPending(true);
             const form = new FormData(e.currentTarget);
+            const email = String(form.get("email") ?? "");
+            lastEmailRef.current = email;
             try {
-              const { error: err } = await getBrowserSupabase().auth.signInWithPassword({
-                email: String(form.get("email") ?? ""),
-                password: String(form.get("password") ?? ""),
-              });
+              const { error: err } =
+                await getBrowserSupabase().auth.signInWithPassword({
+                  email,
+                  password: String(form.get("password") ?? ""),
+                });
               if (err) {
-                setError(err.message);
+                const friendly = friendlyLoginError(err);
+                setError(friendly.message);
+                setUnconfirmed(Boolean(friendly.unconfirmed));
                 setPending(false);
                 return;
               }
@@ -63,18 +148,50 @@ export default function LoginPage() {
             }
           }}
         >
-          {error && (
+          {banner && (
             <p
-              role="alert"
-              className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+              role="status"
+              className="rounded-control bg-success-soft px-3 py-2 text-sm text-success-strong"
             >
-              {error}
+              {banner}
             </p>
           )}
+          {error && (
+            <div className="space-y-2">
+              <p
+                role="alert"
+                className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+              >
+                {error}
+              </p>
+              {unconfirmed && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    disabled={resendState.kind === "pending"}
+                    onClick={() => {
+                      void resendConfirmation(lastEmailRef.current);
+                    }}
+                  >
+                    {resendState.kind === "pending"
+                      ? "Sending…"
+                      : "Resend confirmation email"}
+                  </Button>
+                  {resendState.message && (
+                    <p className="text-xs text-muted-foreground">
+                      {resendState.message}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="login-email">Email</Label>
             <Input
-              id="email"
+              id="login-email"
               name="email"
               type="email"
               autoComplete="email"

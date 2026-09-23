@@ -12,9 +12,23 @@ Last Completed Task: Task 016 - Meta Webhooks
 
 Next Task: Task 017 - Automation Engine
 
-Last Updated: 2026-09-23 (Task 016)
+Last Updated: 2026-09-23 (Auth confirmation bugfix; roadmap still at 017)
 
-Verification: 2026-09-23 Task 016 validation PASSED — typecheck/lint/
+Verification: 2026-09-23 auth confirmation bugfix PASSED — typecheck/
+lint/build:api/build exit 0; `/auth/confirm` 200 (working state SSR);
+login/register 200; authed dashboard/settings/inbox suite 200; anon
+protected → 307 `/login?next=`; authed `/login`+`/register` → 307
+`/dashboard`; Auth API: confirmed login OK, invalid →
+`invalid_credentials` (UI: "Invalid email or password."), unconfirmed →
+`email_not_confirmed` (UI: confirm message + resend), login after
+confirm OK; confirm page structural states present; no `sb_secret_`/
+service-role/PAT values in HTML or `.next` bundle; hydration audit:
+no app `typeof window` render branches / `Math.random` /
+`suppressHydrationWarning` — reported `bis_*` attrs are
+extension-injected; servers stopped after validation. Next roadmap
+task remains **Task 017 — Automation Engine**.
+
+Prior verification (Task 016): 2026-09-23 Task 016 validation PASSED — typecheck/lint/
 build/build:api exit 0; migration `20260923190000` applied via
 `supabase db push`; handshake good token → 200 challenge echo / bad
 token → 403 (with and without cookie); signed POST → 200 + durable
@@ -136,6 +150,120 @@ confirm against the master prompt before starting)
 ---
 
 # Completed Tasks
+
+## Bug Fix — Email Confirmation UX + Login Error + Hydration (after Task 016)
+
+Status: COMPLETE (2026-09-23). Roadmap next remains Task 017.
+
+### Bug discovered / root cause
+
+1. **No confirmation callback existed.** Supabase confirmation emails redirect
+   to Site URL with PKCE `?code=` or implicit `#access_token=…`. No route
+   consumed those params: landing (`/`) is a static marketing page with no
+   Supabase client, so the session was never established and the user saw
+   only the homepage — no "Email verified" feedback.
+2. **Login "error" after confirm** was raw Supabase messages (notably
+   `email_not_confirmed` / `invalid_credentials`) shown verbatim. When the
+   user had not completed confirmation (because #1 gave them no path),
+   login correctly rejected with unconfirmed — but the UI never explained
+   that or offered resend.
+3. **Hydration warning** reported attributes `bis_skin_checked`, `bis_register`,
+   `__processed_…` — browser-extension DOM injection before React hydration,
+   not application-rendered attributes (see investigation below).
+
+### Confirmation flow implemented
+
+- **`app/(auth)/auth/confirm/page.tsx`** (new, client, under auth shell) —
+  only reports success after Auth yields a confirmed session:
+  - PKCE: `exchangeCodeForSession(code)` → `email_confirmed_at` → **Email verified**
+    + "Continue to login" (`/login?verified=1`).
+  - Implicit: `setSession(access_token, refresh_token)` → verified.
+  - URL `error`/`error_description` or failed exchange without session →
+    **Confirmation link expired** + "Request a new email" → `/register`.
+  - Session already confirmed with no unused callback params →
+    **Already verified** + continue to login.
+  - Bare visit with no session → expired state (safe recovery, no raw errors).
+- **`components/auth-result-bridge.tsx`** (new) mounted in root `layout.tsx` —
+  if the browser lands on any path (typically `/`) with auth-result query/hash,
+  `location.replace` to `/auth/confirm` preserving query+hash. Works even when
+  Supabase Site URL still points at `/` (dashboard can later point Site URL
+  at `/auth/confirm` directly).
+- **`proxy.ts`**: `AUTH_PAGES` stays `["/login","/register"]` only —
+  `/auth/confirm` must remain reachable when a session already exists
+  (already-verified state).
+- Register confirmation-sent card enhanced: "Confirm your email" pill +
+  explicit note that the link opens an **Email verified** page; resend via
+  re-submitting the same email (Supabase signup resend) or login resend button.
+
+### Login issue / fix
+
+- **`friendlyLoginError()`** maps Auth errors to safe copy:
+  - `invalid_credentials` / user not found → **"Invalid email or password."**
+  - `email_not_confirmed` → confirmation message + **Resend confirmation email**
+    (`auth.resend({ type: "signup", email })`) using last submitted email.
+  - rate limit → generic wait message.
+  - anything else → "Something went wrong — try again." (no raw provider text).
+- Success path unchanged: `signInWithPassword` → `safeNext` → dashboard.
+- `?verified=1` banner: **"Email verified — you can sign in to continue."**
+  via `useSearchParams` wrapped in `Suspense` (static prerender-safe).
+
+### Hydration investigation result
+
+- Reported attrs (`bis_skin_checked`, `bis_register`, `__processed_*`) are
+  **browser-extension injected**, not React app attributes.
+- App audit: **no** `typeof window` render branches in `.tsx`, **no**
+  `Math.random()` in components, **no** `suppressHydrationWarning` added.
+  `typeof window` exists only in `lib/api/client.ts` (fetch path, not render).
+  Date formatting/`Date.now` in dashboard/inbox run in server components or
+  client islands after hydration with force-dynamic data — not the reported error.
+- Conclusion: **extension-only mismatch**; no application code change for
+  hydration; no blind `suppressHydrationWarning`. Clean-browser recheck
+  (extensions off/incognito) is the manual confirmation step — not automatable
+  here (no browser automation).
+
+### Files changed
+
+- apps/web/app/(auth)/auth/confirm/page.tsx (new)
+- apps/web/components/auth-result-bridge.tsx (new)
+- apps/web/app/layout.tsx (mount AuthResultBridge)
+- apps/web/app/(auth)/login/page.tsx (friendly errors, resend, verified banner, Suspense)
+- apps/web/app/(auth)/register/page.tsx (richer confirmation-sent state)
+- apps/web/proxy.ts (comment only — AUTH_PAGES unchanged behavior)
+- TASK.md, Tree.md (this record)
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`, `npm run build` — all exit 0; `/auth/confirm` present as static route.
+- Route sweep: `/login`,`/register`,`/auth/confirm`, `/auth/confirm?error=…`, `/auth/confirm?code=bogus` → 200; anon `/dashboard`,`/settings`,`/inbox` → 307 `/login?next=`; authed `/login`,`/register` → 307 `/dashboard`.
+- Auth API (real Supabase): confirmed probe password grant OK; wrong password → `400 invalid_credentials`; admin-created unconfirmed user → `400 email_not_confirmed` (maps to resend UI); after `email_confirm=true`, same user login OK; signup email hit host rate limit (`over_email_send_rate_limit`) during testing — documented, not a code bug.
+- Authed HTTP: dashboard/settings/automations/posts/analytics/social-accounts → 200; HTML scan no `sb_secret_` / service-role / PAT values; `.next` bundle secret scan CLEAN.
+- Confirm page SSR: working state copy present; verified/already/expired copy lives in client bundle (resolved after Auth callback — by design).
+
+### Required Supabase dashboard configuration (manual)
+
+Hosted project Auth URL configuration (cannot be changed from this repo):
+
+1. **Authentication → URL Configuration → Site URL**
+   - Dev: `http://localhost:3000/auth/confirm` (or `http://localhost:3000` — bridge still forwards)
+   - Prod: `https://<production-origin>/auth/confirm`
+2. **Additional redirect URLs**: add `http://localhost:3000/auth/confirm` and
+   `https://<production-origin>/auth/confirm` (and `/` if not already listed).
+3. Confirm email templates still use default ConfirmationURL (Site URL based).
+4. Local CLI `supabase/config.toml` has `site_url = http://127.0.0.1:3000` —
+   only affects local stack, not the hosted project used by the app.
+
+Code does not hard-code a dev URL into production behavior; origin comes from
+where the browser already is (`AuthResultBridge` / relative `/auth/confirm`).
+
+### Known limitations
+
+- Full click-through of a real inbox confirmation email not automated
+  (host rate limits + no headless browser in this environment); callback
+  route, token processing paths, and Auth-side confirm→login sequence were
+  tested as documented above.
+- Resend may return 429 if Supabase email rate limit is hit — UI shows a
+  safe failure message.
+- No password-recovery flow (unchanged from Task 013 — still no fake link).
 
 ## Task 016 - Meta Webhooks
 

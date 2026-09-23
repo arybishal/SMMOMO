@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
@@ -19,21 +19,27 @@ export default function RegisterPage() {
     return (
       <div className="w-full max-w-sm">
         <div className="rounded-card border border-border bg-surface p-8 shadow-card">
-          <h1 className="text-lg font-semibold text-foreground">
+          <p className="mb-3 inline-flex items-center rounded-pill bg-info-soft px-2 py-0.5 text-xs font-medium text-info-strong ring-1 ring-inset ring-info/20">
             Check your email
+          </p>
+          <h1 className="text-lg font-semibold text-foreground">
+            Confirm your email
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             We sent a confirmation link to finish creating your account.
-            Confirm it, then sign in.
+            Open it to activate your account, then sign in.
           </p>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            <Link
-              href="/login"
-              className="font-medium text-primary hover:text-primary-hover"
-            >
-              Go to sign in
-            </Link>
+          <p className="mt-3 text-xs text-subtle-foreground">
+            The link opens a clear <strong>Email verified</strong> page when
+            it works. Didn&apos;t get it? Check spam, or sign up again with
+            the same address to resend.
           </p>
+          <Link
+            href="/login"
+            className={`${buttonClasses("primary")} mt-6 w-full`}
+          >
+            Go to sign in
+          </Link>
         </div>
       </div>
     );

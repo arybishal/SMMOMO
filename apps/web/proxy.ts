@@ -13,6 +13,8 @@ const PROTECTED_PREFIXES = [
   "/analytics",
   "/settings",
 ];
+// Login/register only — /auth/confirm must stay reachable when a session
+// already exists (confirmation success/already states render for authed users).
 const AUTH_PAGES = ["/login", "/register"];
 
 function supabaseEnv(): [string, string] {
