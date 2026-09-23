@@ -14,6 +14,16 @@ Next Task: Task 008 - Inbox
 
 Last Updated: 2026-09-23 (Task 007)
 
+Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
+required) — npm install clean; typecheck/lint/build exit 0; dev server no
+runtime errors; 18/18 routes (incl. `auto_1` 200 / `missing` 404 /
+`?edit=nope` 404 / `?edit=` → New); dashboard 11/11, automations 9/9,
+builder 8/8, edit-flow 7/7, posts 3/3, settings 4/4 HTML assertions;
+design tokens + responsive classes intact; API seam is the only `fetch`;
+Supabase env vars present (values not logged). Note: Tasks 001–006
+verified as the requested baseline; Task 007 was already implemented and
+pushed (commit `8185ec4`) before this checkpoint ran — docs match code.
+
 ---
 
 ## Important Instructions For The Next AI Agent
