@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 012 - Database
+Current Task: Task 013 - Authentication
 
-Last Completed Task: Task 011 - Backend Foundation
+Last Completed Task: Task 012 - Database
 
-Next Task: Task 012 - Database
+Next Task: Task 013 - Authentication
 
-Last Updated: 2026-09-23 (Task 011)
+Last Updated: 2026-09-23 (Task 012)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -36,6 +36,9 @@ unapplied; storage buckets `[]`). Verdict for Task 008: READY — inbox
 frontend on mocks needs no schema change; comments/deliveries tables, write
 policies, and real auth belong to later tasks (013-015+). This audit
 changed no database objects, migrations, or RLS.
+Update: superseded 2026-09-23 — migration APPLIED in Task 012 via
+`supabase db push` (local == remote; all 5 tables verified live, RLS
+blocking anon); see the Task 012 record below.
 
 ---
 
@@ -72,7 +75,7 @@ changed no database objects, migrations, or RLS.
 | 009 | Analytics | COMPLETE |
 | 010 | Settings | COMPLETE |
 | 011 | Backend Foundation | COMPLETE |
-| 012 | Database | NOT STARTED |
+| 012 | Database | COMPLETE |
 | 013 | Authentication | NOT STARTED |
 | 014 | API Integration | NOT STARTED |
 | 015 | Meta OAuth | NOT STARTED |
@@ -93,45 +96,165 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 012 - Database
+## Task 013 - Authentication
 
 Status: NOT STARTED
 
 ### Objective
 
-Apply the already-authored foundation migration to the remote Supabase
-project, verify the schema + RLS match what the audit documented, and
-update every "NOT yet applied" note — no schema redesign.
+Replace the mock login/register redirects with real Supabase Auth
+(email + password) — cookie-based sessions, route protection, sign-out,
+and the Settings account page reflecting the signed-in user — while the
+data layer stays on `USE_MOCK=true` and no server-side secret key ever
+enters the web app.
 
-### Requirements (derived from the Task 007/audit state + roadmap row
-"Database" — confirm against the master prompt before starting)
+### Requirements (derived from roadmap row "Authentication" + Task 010's
+"Save enabled with 013" note — confirm against the master prompt before
+starting)
 
-- Apply `supabase/migrations/20260923120000_smmomo_foundation.sql`
-  (5 tables: workspaces, workspace_members, social_accounts, posts,
-  automations + membership-scoped SELECT-only RLS) via
-  `npx supabase link --project-ref etwuqthopqrzffdgvhqs` + `npx supabase
-  db push`, or paste in the dashboard SQL Editor if no CLI access token.
-  **This may require user action/credentials — flag as a blocker if so.**
-- Verify after apply: tables exist, RLS enabled on all 5, policies are
-  membership-scoped SELECT-only, no `using (true)`, no extra objects;
-  publishable-key SELECT without membership returns 0 rows / denied.
-- No new migrations unless a gap is found (document if so); no seed data;
-  no `service_role`/`sb_secret_` anywhere in the repo; migration file
-  itself unchanged unless it fails to apply.
-- Update "authored; NOT yet applied" notes in Tree.md + this file's
-  audit record; web `USE_MOCK` stays true (data reads via API = Task 014).
+- Add `@supabase/ssr` (the one new dependency this task requires;
+  `@supabase/supabase-js` already present) for cookie-based
+  browser/server clients; extend `lib/supabase/*` (publishable key only —
+  the secret key stays out of the repo per .env.example rule).
+- Route protection: unauthenticated users on app routes → `/login`;
+  authenticated users off `/login`/`/register` → `/dashboard`. Follow
+  Next 16 conventions — **read `node_modules/next/dist/docs/` first**
+  (middleware/proxy file naming may differ from older knowledge; AGENTS.md
+  warns about this).
+- `login`/`register` pages: real `signInWithPassword`/`signUp`, honest
+  inline error states (bad credentials, duplicate email, email-confirmation
+  pending — check the hosted project's auth settings first via
+  `GET /auth/v1/settings` with the publishable key; local config.toml
+  has confirmations off but hosted defaults may differ).
+- Sign-out control wired to `signOut()` (sidebar/topbar — wherever the
+  Task 002 avatar/placeholder sits); mock-only fast-switch removed.
+- Settings account page: show the real signed-in email (session user)
+  instead of the placeholder literal; password change via
+  `updateUser({password})` and name via `updateUser({data:{name}})` are
+  Auth-API-only and may finally enable Save honestly — evaluate during
+  implementation; if enabled, the Task 010 hint copy must be updated to
+  match reality (never leave a stale "disabled until 013" hint once 013
+  lands).
+- Data reads/writes stay mocked (`USE_MOCK=true` untouched); RLS SELECT
+  policies won't matter until Task 014 wires API reads — first-user
+  workspace seeding (`workspace_members` row) is explicitly Task 014's
+  problem, not this one.
+- Validation: typecheck/lint/build, route sweep (protected redirects
+  both directions), login success/failure flows testable via the real
+  Auth API, regressions on all existing routes, no secret key anywhere
+  in client bundles (grep build output / network responses).
 
 ### Notes
 
-- Supabase env vars in `.env.local` give project ref + publishable key
-  (values never logged); applying needs a management token or dashboard
-  access — neither is committed.
-- RLS SELECT-only means even after apply, the app cannot write until
-  Tasks 013/014 add auth context + write policies — by design.
+- `workspace_members` RLS helper already exists (applied in Task 012)
+  and denies anon — authenticated-but-no-membership will see empty data
+  once real reads land; document, don't "fix" with permissive policies.
+- Sign-up creates `auth.users` rows only — no tables touched.
 
 ---
 
 # Completed Tasks
+
+## Task 012 - Database
+
+Status: COMPLETE
+
+Completed:
+
+- **Foundation migration applied to the remote project** —
+  `20260923120000_smmomo_foundation.sql` pushed via Supabase CLI
+  (v2.117.0): `login --token` (user-provided personal access token —
+  session/CLI-creds only, never written to any repo file) →
+  `link --project-ref etwuqthopqrzffdgvhqs` → `db push` exit 0,
+  "Finished supabase db push" listing exactly that one migration.
+- **`migration list`**: `local: 20260923120000 == remote: 20260923120000`
+  (recorded `2026-09-23 12:00:00`) — schema versioning in sync.
+- **REST verification (publishable key, anon role)** — all 5 tables
+  (`workspaces`, `workspace_members`, `social_accounts`, `posts`,
+  `automations`) flipped from pre-apply `PGRST205` to **HTTP 200 `[]`**:
+  tables exist, PostgREST schema cache refreshed, RLS returns zero rows
+  for unauthenticated requests.
+- **RLS behavioral proofs**: anon `INSERT` into `workspaces` → **401
+  denied** (RLS enabled + no insert policies — tables left empty,
+  probe created no rows); `POST /rpc/is_workspace_member` as anon →
+  **401** (the `revoke … from public, anon` on the SECURITY DEFINER
+  helper works — anon cannot even evaluate membership).
+- **Migration file unchanged** — pushed exactly as authored in Task 007
+  (5 tables, membership-scoped SELECT-only policies, no `using (true)`,
+  no `CREATE EXTENSION` needed — `gen_random_uuid()` is available by
+  default). No new migrations, no seed data, no extra objects.
+- **Credential hygiene**: personal access token used only as a
+  session-scoped env var + stored by the CLI in `~/.supabase` (outside
+  the repo); git status clean of secrets (`supabase/.temp` ignored);
+  the user's pasted `sb_secret_` key was **not** committed or stored —
+  Management API correctly rejected it (401) as the wrong token type,
+  and Supabase flagged its use (recommendation issued: regenerate).
+- **Docs updated**: Tree.md migration line now "applied … 5 tables +
+  membership RLS live"; this file's audit note marked superseded; header
+  points at Task 013.
+
+What it does:
+
+The database foundation is live: hosted Postgres now has the multi-tenant
+schema (workspaces → members/social_accounts/posts/automations) with RLS
+on every table and membership-scoped reads only — anonymous clients see
+zero rows and cannot execute the membership helper or insert anything.
+The path from empty-project audit (Task 007) to applied-and-verified
+schema is closed; Tasks 013/014 build auth context and API reads on top
+without schema changes.
+
+Files (key):
+
+- supabase/migrations/20260923120000_smmomo_foundation.sql (applied
+  unchanged — no content edits)
+- TASK.md, Tree.md (documentation: applied status, audit superseded)
+
+API/mock changes:
+
+- None in code. Remote schema state changed (that IS the task); web
+  `USE_MOCK=true` seam untouched; no new env vars committed.
+
+Error & loading handling:
+
+- N/A (schema operation). CLI push is transactional — a partial apply
+  was impossible; exit 0 + migration-list match confirm full success.
+
+Validation:
+
+- `npx supabase db push` — exit 0, migration listed.
+- `npx supabase migration list` — local == remote.
+- REST: 5× table probes 200 `[]`; anon INSERT 401; anon RPC 401;
+  tables re-checked empty after probes (0 failures total).
+- Pre-apply baseline captured: all 5 probes were PGRST205 (schema
+  genuinely empty before this task).
+- `npm run typecheck` + `npm run lint` — passed (docs-only task; gate
+  run anyway). No web/API code changed (git diff: TASK.md, Tree.md only).
+
+Known limitations:
+
+- Schema is SELECT-only by design: even signed-in members cannot read
+  rows until membership exists, and nobody can write until Task 014 adds
+  API/service write paths — RLS blocks anon by design, verified.
+- No `workspace_members` seed row yet — first real user gets zero visible
+  data until Task 014 provisions a workspace (documented there, not
+  papered over with permissive policies).
+- `comments`/`deliveries` tables still don't exist (deferred to the
+  automation-engine tasks 016–018, per the Task 008 audit decision).
+- Local dev stack (`supabase start`) was not used — hosted project is
+  the single source of truth for this repo stage.
+- The PAT used for this push lives in CLI session creds; rotating it
+  later does not affect the applied schema.
+
+Deferred backend functionality:
+
+- Workspace/membership provisioning for real users, API read/write
+  integration over these tables (Task 014), auth context in policies
+  (already membership-based — needs sessions from Task 013), comments/
+  deliveries tables (016–018), write policies/service-role paths.
+
+Next:
+
+Task 013 - Authentication
 
 ## Task 011 - Backend Foundation
 
