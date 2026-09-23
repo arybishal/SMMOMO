@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 008 - Inbox
+Current Task: Task 009 - Analytics
 
-Last Completed Task: Task 007 - Posts + Supabase Foundation
+Last Completed Task: Task 008 - Inbox
 
-Next Task: Task 008 - Inbox
+Next Task: Task 009 - Analytics
 
-Last Updated: 2026-09-23 (Task 007)
+Last Updated: 2026-09-23 (Task 008)
 
 Verification: 2026-09-23 full baseline checkpoint PASSED (no code changes
 required) — npm install clean; typecheck/lint/build exit 0; dev server no
@@ -68,7 +68,7 @@ changed no database objects, migrations, or RLS.
 | 005 | Automation List | COMPLETE |
 | 006 | Automation Builder | COMPLETE |
 | 007 | Posts + Supabase Foundation | COMPLETE |
-| 008 | Inbox | NOT STARTED |
+| 008 | Inbox | COMPLETE |
 | 009 | Analytics | NOT STARTED |
 | 010 | Settings | NOT STARTED |
 | 011 | Backend Foundation | NOT STARTED |
@@ -93,46 +93,226 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 008 - Inbox
+## Task 009 - Analytics
 
 Status: NOT STARTED
 
 ### Objective
 
-Refine `/inbox` from its Task 002/003 first-pass view into a finished V1
-surface — search/filter over comments and deliveries, clearer outcome
-states, empty states — using only existing `lib/api/inbox` data, no new
-deps, no fake actions.
+Refine `/analytics` from its Task 002/003 first-pass view into a finished V1
+surface — clearer KPI presentation, richer CSS chart, honest time context,
+text alternatives — using only existing `lib/api/analytics` data, no chart
+libraries, no fabricated fields.
 
 ### Requirements (derived from this file's note on Tasks 004–010 + current
 repo state — confirm against the master prompt before starting)
 
-- Refine `app/(dashboard)/inbox/page.tsx` in place; reuse
-  `listRecentComments()` + `listRecentDeliveries()` only — no new data
-  layer, no fetch outside `lib/api`.
-- Inspect the current page first (it already shows comments + delivery
-  results with status badges) and deepen rather than rebuild.
-- Likely additions if data supports them: kind/status filter (matched vs
-  unmatched; delivery status tones), search over comment text/username,
-  empty + no-match states, richer per-row context (joined automation name
-  via `commentId`, `<time dateTime>` relative/absolute times).
-- Keep client-side state in a colocated island (Task 005/007 pattern);
-  server page keeps loading.
-- Accessibility: labeled search/filter controls, keyboard-operable
-  buttons, text (not color-only) statuses.
+- Refine `app/(dashboard)/analytics/page.tsx` in place; reuse
+  `getAnalyticsSummary()` only — no new data layer, no fetch outside
+  `lib/api`.
+- Inspect the current page first (KPIs + CSS bar chart already exist) and
+  deepen rather than rebuild.
+- Likely additions if data supports them: KPI weighting/emphasis matching
+  Dashboard language, chart axis/legends, hover/focus affordances on bars,
+  empty + no-data states, an accessible text summary of the chart
+  (`AnalyticsSummary` has **no period field** — do not fabricate one;
+  UsageSummary's period lives at `/settings/usage`).
+- Keep any client-side state in a colocated island (Task 005/007/008
+  pattern); server page keeps loading through `lib/api`.
+- Accessibility: chart needs a readable text alternative; labels/badges
+  never color-only; filters (if added) get `aria-pressed` + labels.
 - Tokens/primitives only; no new deps; mock-only; do not touch unrelated
-  routes; no fake reply/retry/delete actions (deliveries are read-only
-  until Task 014+).
+  routes; no fake export/schedule actions.
 
 ### Notes
 
-- Dashboard already joins deliveries↔automations via `commentId` — same
-  join pattern applies here.
-- Inbox-specific detail route: only add if the master prompt demands it.
+- Dashboard shows the same `getAnalyticsSummary()` KPIs — keep number
+  language consistent across both surfaces.
+- Chart must stay CSS-only (no chart package — design-system rule).
 
 ---
 
 # Completed Tasks
+
+## Task 008 - Inbox
+
+Status: COMPLETE
+
+Completed:
+
+- `/inbox` rewritten from the Task 002/003 two-card first-pass (separate
+  Comments/Deliveries lists) into a two-panel operational inbox: server
+  page loads `listRecentComments()` + `listRecentDeliveries()` +
+  `listAutomations()` + `listPosts()` in one `Promise.all`, renders
+  `PageHeader` ("Inbox" / "Monitor comments, automation matches, and
+  private DM activity from your Instagram content."), the true empty state
+  (0 comments → "No inbox activity yet" copy that does **not** claim
+  Instagram is connected), and delegates to a colocated client island.
+- Client island `inbox/inbox.tsx` (Task 005/007 pattern): owns selection +
+  search + filters only; all data arrives as props (no fetch, no direct
+  `lib/mock` imports — grep-verified).
+- Activity list (left, `lg:col-span-5`): one row per comment showing
+  author (`@username`), comment text, post caption, `Automation: <name>` or
+  "No automation matched" (real `CommentEvent` fields), outcome Badge, and
+  `<time dateTime>` relative time. Rows are semantic `<button>`s —
+  selected row carries `aria-current="true"` + `border-primary
+  bg-primary-soft`; hover/focus outlines from shared chrome.
+- Outcome badges reuse the Dashboard tone/label vocabulary via the same
+  deliveries-by-`commentId` join (Ignored / Failed / DM sent / Queued /
+  Matched) — **no invented statuses**; delivery statuses stay the model's
+  `queued | sent | delivered | failed` mapped through the existing Badge
+  tone map.
+- Detail panel (right, `lg:col-span-7`): selected comment header
+  (username, absolute + relative time, outcome badge) then sections —
+  **Comment** (quoted text, post caption, post-type Badge, `View on
+  Instagram` permalink link when the `postId` join resolves),
+  **Automation** (name → `/automations/[id]`, keyword chip, status Badge —
+  joined by `automationName`, documented: `CommentEvent` has no
+  `automationId` yet), **Public reply** (configured reply text when
+  automation has one + delivery status/time when a `public_reply` delivery
+  exists), **Private DM** (automation's `privateReply` template in a
+  `whitespace-pre-wrap` primary-soft block + `private_dm` delivery
+  status/time + "No delivery recorded" fallback).
+- Delivery errors surfaced per spec §8 in a danger-tinted `ErrorBlock`:
+  "Delivery failed" / "Unable to send the private message." (or "public
+  reply") / the `MessageDelivery.error` string already on the model
+  ("Meta API: recipient cannot receive messages (24h window).") — no stack
+  traces, no invented internals. Rendered only for `status === "failed"`.
+- Toolbar: outcome filter buttons All / Sent / Failed / Ignored
+  (`role="group"` + `aria-pressed` + token selected state; Queued/Matched
+  outcomes have no button — zero such rows exist today, spec §10 "don't
+  create five filters to fill the interface"), post `<Select>` offering
+  only posts with activity (derived from distinct `postId`s — 3 options +
+  All posts; `aria-label`), and search `Input type="search"` (`aria-label`)
+  over comment text / author / post caption / automation name — all fields
+  live on `CommentEvent`, client-side `useMemo`, no search library, no
+  per-keystroke backend. Filters combine (AND); `aria-live` "Showing X of
+  Y" only while filtered; "No activity matches your filters." + `Clear
+  filters` for the no-match branch.
+- Selection: defaults to the first visible row; survives filtering by
+  falling back to the first visible item; empty filtered list shows the
+  no-results state in the list panel and a "Select an activity…" placeholder
+  in the detail panel.
+- Empty states: page-level (0 comments) and filter-level (0 matches) both
+  implemented; the page-level copy explains activity will appear "as
+  followers engage" without asserting a connection state.
+- Responsive: two-panel `grid lg:grid-cols-12` (5/7 split) collapses to a
+  single column below `lg` (list first, then detail) — same structure as
+  Posts/Automations; all row text truncates; no horizontal overflow classes
+  needed; structural verification only (no browser tooling).
+- Accessibility: `PageHeader` h1 → panel `CardTitle` h2 → section h3
+  (`aria-labelledby` wiring on Comment/Automation/Public reply/Private DM);
+  semantic `<ul>/<li>`; row selection via `aria-current`; filter
+  `aria-pressed`; labeled search + select; status always text-in-badge
+  (never color-only); `<time dateTime>` on every timestamp; error block is
+  plain understandable text; links carry descriptive labels + new-tab
+  hints; focus outlines from shared button/input chrome.
+- No fake messaging (spec §17): zero reply/retry/delete/hide/like controls,
+  no composer, no Meta calls — detail panel is read-only; deliveries are
+  display-only until Task 014+. No Supabase touched (spec §22): no tables,
+  no migrations, no RLS, no auth changes, no storage, no triggers.
+
+What it does:
+
+`/inbox` now communicates the full operational story — comment →
+automation match → public reply / private DM → delivery result — in one
+scan-friendly surface: pick any activity, see exactly what the follower
+said, which automation handled it (with keyword), what message went out,
+and whether delivery succeeded or failed (with the failure reason), while
+search/filter answer "what happened recently" at a glance. Architecture
+unchanged: server fetch → props → one client island; zero new
+dependencies.
+
+Files (key):
+
+- apps/web/app/(dashboard)/inbox/page.tsx (rewritten: server page,
+  header, empty state, 4-way Promise.all through lib/api, delegates island)
+- apps/web/app/(dashboard)/inbox/inbox.tsx (NEW — client island: selection,
+  search, filters, two-panel list+detail; not a route)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- None. Consumed existing `listRecentComments()`, `listRecentDeliveries()`,
+  `listAutomations()`, `listPosts()` — no new endpoints, types, fields, or
+  mock objects. Joins are real identifiers: deliveries↔comment by
+  `commentId` (existing Dashboard pattern), comment↔post by `postId`,
+  comment↔automation by `automationName` (the only key `CommentEvent`
+  carries — documented in code; a real `automationId` arrives with the
+  comments table in a later backend task). `lib/api/inbox.ts` unchanged.
+
+Error & loading handling:
+
+- No try/catch (convention — `request()` failures throw to Next's error
+  page); no `loading.tsx` (mocks resolve instantly); structure is async
+  `Promise.all` so a future real API drops in without UI changes. No fake
+  spinners (spec §13).
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (16 routes; `/inbox` now static ○ with the
+  colocated client island).
+- Dev-server route sweep — 17/17 (all baseline routes incl. `?edit=nope`
+  → 404, `/automations/missing` → 404, `/inbox` → 200).
+- `/inbox` HTML assertions (all pass after correcting assertion-regex
+  false-negatives from React `<!-- -->` text-node separators): spec
+  description copy; Activity panel; all 6 comment authors; comment text;
+  post captions; `Automation: Checklist DM` row join; "No automation
+  matched" row copy; DM sent/Ignored/Failed badges; ≥4 `aria-pressed`
+  buttons; filter-group + search + post-select `aria-label`s; "All posts"
+  option; exactly one `aria-current="true"` (default selection); detail
+  header `@mia.builds` with absolute+relative `<time>`; section headings
+  (`inbox-comment/automation/reply/dm-heading`); keyword chip `CHECK`;
+  active status badge; DM template URL; public-reply text "Sent! Check your
+  DMs."; Delivered badge; `View on Instagram` + `rel="noopener noreferrer"`
+  + `/automations/auto_1` href; failed `d_4` + queued `d_6` + `public_reply`
+  records present in RSC payload (ErrorBlock code path grep-verified — it
+  renders client-side when the failed row is selected); **no**
+  reply/send/retry/composer controls; `lg:grid-cols-12` + `lg:col-span-5/7`;
+  relative-time text; API-seam-only imports (3/3), zero `lib/mock`/fetch/
+  supabase references in inbox files.
+- Regression (all PASS): Dashboard KPIs/usage/activity/deliveries;
+  Automations list names + ≥4 filters; detail Edit link + Pause still
+  disabled; builder Save disabled when invalid; `?edit=auto_1` prefilled +
+  Save enabled; Posts captions + exactly 4 `?post=post_N` hrefs + type
+  badges. Dev log: zero runtime errors.
+- Responsive: structural verification only (breakpoint classes in served
+  HTML). No browser automation in this environment — click-through of
+  search/filter/selection interaction left to owner.
+
+Known limitations:
+
+- Filter/search/selection behavior is client-side — compile- and
+  SSR-verified only (no browser tooling; no new deps allowed).
+- Queued and Matched comment outcomes render their badges but have no
+  filter button (0 rows in current data) — visible under All; add buttons
+  when data warrants.
+- Post filter options come from posts with activity in the current mock
+  (3 of 4); posts without comments are intentionally absent.
+- Comment→automation join is by `automationName` (no `automationId` on
+  `CommentEvent`) — unique in mock data; real id arrives with the comments
+  table (backend task).
+- `{{first_name}}` in the DM template renders raw (no follower first name
+  exists in the data model — not fabricated).
+- Public-reply section appears when either the automation configures a
+  reply or a `public_reply` delivery exists; config-only case shows "No
+  public reply recorded" (accurate: no delivery row).
+- Empty states (0 comments / 0 matches) are compile-verified branches —
+  mocks stay populated.
+- No pagination/realtime — mock dataset is small by design (spec §21).
+
+Deferred backend functionality (spec §16/§17/§22):
+
+- Meta webhook → verify → dedupe → queue → match → DM/reply → delivery
+  record pipeline (Tasks 016–018); comments/deliveries tables + write
+  policies (014+); real auth (013); reply/retry/resolve actions; pagination
+  and realtime inbox updates.
+
+Next:
+
+Task 009 - Analytics
 
 ## Task 007 - Posts + Supabase Foundation
 
