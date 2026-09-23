@@ -247,10 +247,11 @@ cp .env.example .env
 | `META_REDIRECT_URI` | Active (API env) | OAuth callback (default `http://localhost:4000/social-accounts/instagram/callback`) — read-only in Settings → Integrations |
 | `META_WEBHOOK_VERIFY_TOKEN` | Active (API env) | Webhook verification handshake secret (Task 016); empty DB field falls back here |
 | `PLATFORM_ADMIN_EMAILS` | Active (API env) | Comma-separated emails allowed to read/write Settings → Integrations (Task 018A) |
-| `PLATFORM_ENCRYPTION_KEY` | Active (API env) | AES-256-GCM key (64 hex or base64) for `platform_settings` secrets (Task 018A) |
-| `SUPABASE_SERVICE_ROLE_KEY` | API env only | Service-role key for webhook/engine/delivery/usage writes — never apps/web, never commit |
+| `PLATFORM_ENCRYPTION_KEY` | Active (API env) | AES-256-GCM key (64 hex or base64) for `platform_settings` secrets **and** `social_accounts.access_token` (v1 envelope, Task 018A + 021) |
+| `SUPABASE_SERVICE_ROLE_KEY` | API env only | Service-role key for webhook/engine/delivery/usage/OAuth token writes — never apps/web, never commit |
 | — | — | Usage events (Task 019): `usage_events` table is the authority for usage/billing metrics; `automations.*_count` remains analytics authority; no plan limits in V1 (`limit`/`remaining` null) |
 | — | — | Security hardening (Task 020): see `docs/security.md` — column-level `social_accounts` reads, timing-safe webhooks, rate limits, security headers, no stack leaks |
+| — | — | Production readiness (Task 021): IG tokens encrypted at rest (`v1.` AES-GCM), full CSP, OAuth rate limit, composite FK, member UPDATE revoked on `social_accounts`; see `docs/security.md` |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a

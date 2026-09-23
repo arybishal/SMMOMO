@@ -239,6 +239,16 @@ async function main() {
     (home.headers["x-frame-options"] || "").toUpperCase() === "DENY",
   );
   ok("web Referrer-Policy present", Boolean(home.headers["referrer-policy"]));
+  ok(
+    "web CSP present",
+    Boolean(home.headers["content-security-policy"]),
+    (home.headers["content-security-policy"] || "").slice(0, 60),
+  );
+  ok(
+    "web CSP blocks external scripts",
+    /script-src[^;]*'self'/.test(home.headers["content-security-policy"] || "") &&
+      !/script-src[^;]*\*/.test(home.headers["content-security-policy"] || ""),
+  );
 
   // --- API security headers ---
   const apiHealth = await req(`${API}/health`);
@@ -293,6 +303,35 @@ async function main() {
         colProbe.status >= 400 || colProbe.body.includes('"code"') || colProbe.status === 400,
         `status=${colProbe.status} ${colProbe.body.slice(0, 100)}`,
       );
+
+      // Member cannot UPDATE token columns (Task 021 — service-role only).
+      // Probe with the owner's own JWT: fails on privilege, not RLS.
+      const adminSocialRows = JSON.parse(adminSocial.body);
+      const socialId = Array.isArray(adminSocialRows) && adminSocialRows[0]
+        ? adminSocialRows[0].id
+        : null;
+      if (socialId) {
+        const updBody = JSON.stringify({ access_token: "attacker-plaintext" });
+        const upd = await req(
+          `${SUPA}/rest/v1/social_accounts?id=eq.${socialId}`,
+          {
+            method: "PATCH",
+            headers: {
+              apikey: PUB,
+              Authorization: `Bearer ${admin.token}`,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(updBody),
+              Prefer: "return=representation",
+            },
+            body: updBody,
+          },
+        );
+        ok(
+          "member cannot UPDATE access_token",
+          upd.status >= 400,
+          `status=${upd.status}`,
+        );
+      }
     } catch (e) {
       ok("cross-workspace isolation", false, String(e));
     }

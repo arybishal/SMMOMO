@@ -1,6 +1,11 @@
 import type { FastifyBaseLogger } from "fastify";
 import { restService, serviceEnabled } from "./supabase";
 import { recordUsageEvent, type UsageEventType } from "./usage";
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSecret,
+} from "./crypto";
 
 // Task 018: outbound delivery worker. No Redis/BullMQ in this environment
 // (same gap as 017) — honest inline poll on the API process. Claim → Graph
@@ -50,6 +55,44 @@ type SendOutcome =
   | { ok: true }
   | { ok: false; error: string; retryable: boolean };
 
+// Meta error bodies must never surface tokens (Authorization never logged;
+// still strip token-shaped substrings from Graph text before persisting).
+function sanitizeGraphError(text: string): string {
+  return text
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\bIGQV[A-Za-z0-9._-]+/g, "[redacted]")
+    .slice(0, 200);
+}
+
+/**
+ * Resolve the stored access token for a Graph send.
+ * Encrypted (`v1.…`) → decrypt (auth tag verified; tamper → null).
+ * Legacy plaintext (pre-021) → use once and re-encrypt in place so the
+ * compatibility path only ever moves toward ciphertext, never away from it.
+ */
+async function resolveAccessToken(
+  workspaceId: string,
+  stored: string,
+): Promise<string | null> {
+  if (isEncryptedSecret(stored)) {
+    return decryptSecret(stored);
+  }
+  // Legacy row: encrypt in place (best-effort), then return plaintext for
+  // this send. New OAuth writes are always encrypted at rest (meta.ts).
+  if (!stored) return null;
+  try {
+    const enc = encryptSecret(stored);
+    await restService(
+      `social_accounts?workspace_id=eq.${encodeURIComponent(workspaceId)}&platform=eq.instagram`,
+      { method: "PATCH", prefer: "return=minimal", body: { access_token: enc } },
+    );
+  } catch {
+    // Missing PLATFORM_ENCRYPTION_KEY — still deliver with plaintext once;
+    // migration script + restart with key will finish the conversion.
+  }
+  return stored;
+}
+
 async function sendPrivateDm(
   token: string,
   igUserId: string,
@@ -75,7 +118,7 @@ async function sendPrivateDm(
     const text = await res.text().catch(() => "");
     return {
       ok: false,
-      error: `graph_dm_${res.status}: ${text.slice(0, 200)}`,
+      error: `graph_dm_${res.status}: ${sanitizeGraphError(text)}`,
       retryable: res.status >= 500 || res.status === 429,
     };
   } catch (err) {
@@ -108,7 +151,7 @@ async function sendPublicReply(
     const text = await res.text().catch(() => "");
     return {
       ok: false,
-      error: `graph_reply_${res.status}: ${text.slice(0, 200)}`,
+      error: `graph_reply_${res.status}: ${sanitizeGraphError(text)}`,
       retryable: res.status >= 500 || res.status === 429,
     };
   } catch (err) {
@@ -244,17 +287,20 @@ async function processOne(
     `social_accounts?workspace_id=eq.${encodeURIComponent(row.workspace_id)}&platform=eq.instagram&select=access_token,ig_user_id,status&limit=1`,
   );
   const account = social.data?.[0];
-  if (social.status >= 400 || !account?.access_token || !account.ig_user_id) {
+  const accessToken = account?.access_token
+    ? await resolveAccessToken(row.workspace_id, account.access_token)
+    : null;
+  if (social.status >= 400 || !accessToken || !account?.ig_user_id) {
     await finalize(row.id, "failed", "no_ig_connection");
     if (automationId) await bumpAutomation(automationId, "failed_count");
-    log.warn({ deliveryId: row.id }, "delivery: no connected IG token");
+    log.warn({ deliveryId: row.id }, "delivery: no usable IG token");
     return;
   }
 
   let outcome: SendOutcome;
   if (row.kind === "private_dm") {
     outcome = await sendPrivateDm(
-      account.access_token,
+      accessToken,
       account.ig_user_id,
       row.recipient,
       message,
@@ -266,7 +312,7 @@ async function processOne(
       return;
     }
     outcome = await sendPublicReply(
-      account.access_token,
+      accessToken,
       comment.ig_comment_id,
       message,
     );

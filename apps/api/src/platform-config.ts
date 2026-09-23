@@ -1,14 +1,13 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from "node:crypto";
 import { restService, type AuthUser } from "./supabase";
+import { decryptSecret, encryptSecret } from "./crypto";
 
 // Platform Meta config (Task 018A). One resolved object is the single source
 // of truth for OAuth (015), webhooks (016), and admin status — never a second
 // App ID/Secret path. Workspace rows (social_accounts.access_token) stay
-// separate and are never written here.
+// separate and are never written here. AES-256-GCM helpers live in crypto.ts
+// (shared with IG token encryption at rest).
+
+export { encryptionReady } from "./crypto";
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:4000";
 const CALLBACK_PATH = "/social-accounts/instagram/callback";
@@ -60,54 +59,6 @@ function envAppSecret(): string {
 }
 function envVerifyToken(): string {
   return process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
-}
-
-function encryptionKey(): Buffer | null {
-  const raw = (process.env.PLATFORM_ENCRYPTION_KEY ?? "").trim();
-  if (!raw) return null;
-  if (/^[0-9a-f]{64}$/i.test(raw)) return Buffer.from(raw, "hex");
-  const b64 = Buffer.from(raw, "base64");
-  if (b64.length === 32) return b64;
-  return null;
-}
-
-export function encryptionReady(): boolean {
-  return encryptionKey() !== null;
-}
-
-function encryptSecret(plain: string): string {
-  const key = encryptionKey();
-  if (!key) {
-    throw Object.assign(new Error("PLATFORM_ENCRYPTION_KEY not configured"), {
-      statusCode: 503,
-    });
-  }
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `v1.${iv.toString("base64url")}.${tag.toString("base64url")}.${ct.toString("base64url")}`;
-}
-
-function decryptSecret(encoded: string): string | null {
-  const key = encryptionKey();
-  if (!key) return null;
-  try {
-    const [v, ivS, tagS, ctS] = encoded.split(".");
-    if (v !== "v1" || !ivS || !tagS || !ctS) return null;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      key,
-      Buffer.from(ivS, "base64url"),
-    );
-    decipher.setAuthTag(Buffer.from(tagS, "base64url"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(ctS, "base64url")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch {
-    return null;
-  }
 }
 
 async function loadRow(): Promise<PlatformSettingsRow | null> {

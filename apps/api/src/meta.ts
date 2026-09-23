@@ -1,7 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { authed, ensureWorkspace, rest, requireUser, type AuthUser } from "./supabase";
+import {
+  authed,
+  ensureWorkspace,
+  rest,
+  restService,
+  requireUser,
+  type AuthUser,
+} from "./supabase";
 import { getMetaConfig, type ResolvedMetaConfig } from "./platform-config";
+import { encryptSecret } from "./crypto";
 
 // Meta/Instagram OAuth (Task 015). Credentials resolve through
 // getMetaConfig() (Task 018A): platform_settings (encrypted) first, then
@@ -139,11 +147,14 @@ async function exchangeCode(
 }
 
 async function upsertConnection(
-  user: AuthUser,
   workspaceId: string,
   profile: IgProfile,
   accessToken: string,
 ): Promise<void> {
+  // Encrypt server-side before storage (Task 021). Token columns are not
+  // member-writable (migration 20260924000000) — service-role writes only.
+  // encryptSecret throws 503 when PLATFORM_ENCRYPTION_KEY is missing so we
+  // never fall back to plaintext storage.
   const body = {
     workspace_id: workspaceId,
     platform: "instagram",
@@ -152,13 +163,12 @@ async function upsertConnection(
     followers: profile.followers,
     status: "connected",
     connected_at: new Date().toISOString(),
-    access_token: accessToken,
+    access_token: encryptSecret(accessToken),
     ig_user_id: profile.userId,
     // Instagram Login long-lived tokens ~60 days — refresh belongs to 016+.
     token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
   };
-  const existing = await rest<{ id: string }[]>(
-    user,
+  const existing = await restService<{ id: string }[]>(
     `social_accounts?workspace_id=eq.${workspaceId}&platform=eq.instagram&select=id`,
   );
   if (existing.status >= 400) {
@@ -166,8 +176,7 @@ async function upsertConnection(
   }
   const row = existing.data?.[0];
   if (row) {
-    const updated = await rest(
-      user,
+    const updated = await restService(
       `social_accounts?id=eq.${row.id}`,
       { method: "PATCH", body, prefer: "return=minimal" },
     );
@@ -176,10 +185,9 @@ async function upsertConnection(
     }
     return;
   }
-  const created = await rest(user, "social_accounts", {
+  const created = await restService("social_accounts", {
     method: "POST",
     body,
-    // minimal: avoid RETURNING access_token (column not SELECT-able by members).
     prefer: "return=minimal",
   });
   if (created.status >= 400) {
@@ -281,7 +289,6 @@ export function registerMetaRoutes(app: FastifyInstance): void {
         });
       }
       await upsertConnection(
-        user,
         workspaceId,
         exchanged.profile,
         exchanged.token,

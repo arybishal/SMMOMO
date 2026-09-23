@@ -4,17 +4,44 @@
 
 Status: IN DEVELOPMENT
 
-Current Phase: Frontend Foundation
+Current Phase: Production Readiness
 
-Current Task: Task 021 - Testing
+Current Task: Task 022 - (TBD — production domain / multi-origin per Task 020 notes)
 
-Last Completed Task: Task 020 - Security Hardening
+Last Completed Task: Task 021 - Production Readiness + Residual Risk Cleanup
 
-Next Task: Task 021 - Testing
+Next Task: Task 022 - (TBD)
 
-Last Updated: 2026-09-23 (Task 020)
+Last Updated: 2026-09-23 (Task 021)
 
-Verification: 2026-09-23 Task 020 validation PASSED — typecheck/lint/
+Verification: 2026-09-23 Task 021 validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260924000000_production_readiness.sql`
+APPLIED via `supabase db push` (revoke member INSERT/UPDATE on
+social_accounts; unique posts(workspace_id,id); composite FK
+automations(workspace_id,post_id)→posts ON DELETE CASCADE; unique
+(workspace_id,platform) on social_accounts — duplicate probe rows cleaned
+first; migration made idempotent after first unique-index failure);
+shared crypto in `apps/api/src/crypto.ts` (AES-256-GCM `v1.<iv>.<tag>.<ct>`
+base64url, PLATFORM_ENCRYPTION_KEY, no plaintext fallback → 503);
+OAuth upsert now service-role + encryptSecret; delivery resolveAccessToken
+(decrypt v1 / lazy re-encrypt legacy plaintext) + sanitizeGraphError;
+encrypt-ig-tokens.ts run 1/1 encrypted plaintextLeft=0; validate-tokens.ts
+14/14 PASS (roundtrip, malformed/tampered/wrong-key → null, DB all-v1 +
+decryptable); full CSP always-on in next.config.ts from asset inventory
+(unsafe-inline documented for Next bootstrap); OAuth connect/callback
+rate limit 20/min/IP + Map key cap 10k; env classification in
+.env.example; docs/security.md token-storage model + CSP inventory +
+resolved-table + prod requirements 7–8; Tree.md new files; README env
+table; validate-security.mjs extended → **25/25 PASS** (CSP present +
+blocks external scripts, member cannot UPDATE access_token);
+validate-usage.mjs **32/32 PASS**; secret scan 0 real secrets (publishable
+keys + service_role comments only); npm audit 0 vulnerabilities; route
+smoke health/login/register 200 + /posts 401; residual risks: multi-instance
+rate-limit store, key-rotation dual-key window, script-src unsafe-inline,
+stuck processing delivery reclaim; Task 022 next.
+
+Prior verification (Task 020): 2026-09-23 Task 020 validation PASSED —
+typecheck/lint/
 build:api/build exit 0; migration `20260923230000_security_hardening.sql`
 APPLIED via `supabase db push` (column-level SELECT on social_accounts —
 members get id/workspace_id/platform/username/name/followers/status/
@@ -219,13 +246,13 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 021 - Testing
+## Task 022 - (TBD)
 
 Status: NOT STARTED
 
 ### Objective
 
-TODO — test/tooling pass per roadmap (see Task 020 notes / master prompt).
+TODO — production domain / multi-origin (or next roadmap item per master prompt).
 
 ### Requirements
 
@@ -234,6 +261,112 @@ TODO — test/tooling pass per roadmap (see Task 020 notes / master prompt).
 ---
 
 # Completed Tasks
+
+## Task 021 - Production Readiness + Residual Risk Cleanup
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 022.
+
+### Objective (from spec)
+
+Clear residual risks from Task 020 without billing/V1 expansion/giant
+refactor: encrypt IG tokens at rest (key-rotation-ready format), token
+migration, RLS recheck, rate-limit review, CSP from real asset inventory,
+`automations.post_id` FK decision, DB integrity audit, OAuth/webhook/
+delivery/usage regressions, security scanning, env classification, error
+handling, tests, full validation, docs, git hygiene, final report.
+
+### Decisions
+
+- **Shared crypto:** `apps/api/src/crypto.ts` AES-256-GCM envelope
+  `v1.<iv>.<tag>.<ct>` (base64url) with `PLATFORM_ENCRYPTION_KEY`;
+  platform-config re-exports `encryptionReady`. Same helpers for
+  platform secrets + IG tokens. Envelope versioned for future dual-key
+  rotation (rotation window not implemented — documented).
+- **No plaintext fallback:** missing key → explicit 503 on OAuth upsert
+  and encrypt paths; never write plaintext tokens.
+- **Legacy plaintext tokens:** delivery `resolveAccessToken` uses once
+  and re-encrypts in place (one-way toward ciphertext).
+- **`automations.post_id`:** keep NOT NULL + CASCADE (automation never
+  exists without post; disconnect cascade wipes posts→automations
+  intentionally) + **composite FK** `(workspace_id, post_id) →
+  posts(workspace_id, id)` so members cannot bind across tenants.
+- **Rate limiting:** stay in-process (single instance; Redis reserved
+  only in .env.example). Added OAuth connect/callback 20/min/IP; Map key
+  cap 10,000 clear-on-full. Multi-instance limitation documented.
+- **CSP:** always-on in `next.config.ts` from real asset inventory
+  (self, Supabase URL, API origin; self-hosted Geist; `'unsafe-inline'`
+  for Next bootstrap — documented). HSTS prod-only. Inventory table in
+  docs/security.md; adding third-party scripts requires updating both.
+- **Env classification:** `.env.example` comments: client-safe /
+  server-only / secret / optional / development-only /
+  production-required.
+
+### Completed
+
+- **Crypto:** new `apps/api/src/crypto.ts`; platform-config imports +
+  re-exports; admin path unchanged.
+- **OAuth:** `meta.ts upsertConnection` → service-role +
+  `encryptSecret(accessToken)` (signature without unused `user`).
+- **Delivery:** `resolveAccessToken` (v1 decrypt / legacy re-encrypt) +
+  `sanitizeGraphError` strips Bearer/IGQV from persisted Graph errors.
+- **Rate limit:** Map key cap 10,000; third limiter OAuth connect/
+  callback 20/min/IP.
+- **Web CSP:** full Content-Security-Policy (+ existing headers) with
+  inventory in config comments.
+- **Migration `20260924000000_production_readiness.sql` APPLIED:** REVOKE
+  INSERT/UPDATE on social_accounts from authenticated; unique
+  posts(workspace_id,id); drop/replace automations FK with composite
+  workspace-scoped FK; unique (workspace_id,platform) index. Idempotent
+  (DO block for unique target). First push failed on duplicate
+  (workspace,instagram) probe rows — cleaned 2 of 3 fixture rows, kept
+  newest, re-push succeeded.
+- **Token migration:** `encrypt-ig-tokens.ts` run →
+  `{"total":1,"encrypted":1,"plaintextLeft":0}`.
+- **Token validation:** `validate-tokens.ts` 14/14 PASS (key ready,
+  roundtrip, malformed empty/no-dots/wrong-version/short → null, tampered
+  tag/ct → null, wrong key → null, DB all-`v1.` + decryptable).
+- **Harness:** `validate-security.mjs` + CSP present + CSP blocks
+  external scripts + member cannot UPDATE access_token (owner JWT → 403)
+  → **25/25 PASS**. `validate-usage.mjs` **32/32 PASS** (regression).
+- **Docs:** docs/security.md — IG token storage model, CSP inventory
+  table, RLS/composite FK/unique connection, service-role includes meta +
+  scripts, rate-limit OAuth note, Resolved table (token/CSP/FK/unique),
+  Remaining (multi-instance, key rotation dual-key, unsafe-inline, stuck
+  delivery), prod requirements 7–8 (run encrypt script, rotation plan);
+  Tree.md new files + migration; README env table 021 row; .env.example
+  classification.
+
+### Validation
+
+- typecheck / lint / build:api / build (web) exit 0.
+- Migration applied via `npx supabase db push` (after dedupe).
+- Token encrypt script 1/1, validate-tokens 14/14.
+- API `/health` 200; web :3000 200; route smoke login/register 200,
+  /posts 401.
+- `node apps/api/scripts/validate-security.mjs` → **25/25 PASS**.
+- `node apps/api/scripts/validate-usage.mjs` → **32/32 PASS**.
+- Secret scan: 0 real secrets (publishable keys + `service_role`
+  word-in-comments only); `npm audit` 0 vulnerabilities.
+
+### Residual risks (documented, not fixed here)
+
+- In-process rate-limit store — multi-instance needs shared store (medium).
+- Key rotation dual-key decrypt window not implemented (medium) —
+  envelope is versioned ready.
+- CSP `script-src 'unsafe-inline'` required by Next bootstrap (low).
+- Stuck `processing` delivery reclaim still operator-driven (low).
+- Graph live Meta send still not proven (no messaging perms — stub
+  validation only).
+
+### Files changed
+
+- apps/api/src/crypto.ts (new), platform-config.ts, meta.ts,
+  delivery.ts, app.ts, admin.ts (import only)
+- apps/api/scripts/encrypt-ig-tokens.ts (new), validate-tokens.ts (new),
+  validate-security.mjs
+- apps/web/next.config.ts
+- supabase/migrations/20260924000000_production_readiness.sql (new)
+- .env.example, docs/security.md, Tree.md, README.md, TASK.md
 
 ## Task 020 - Security Hardening
 

@@ -127,9 +127,11 @@ function uuidOk(id: string): boolean {
   );
 }
 
-// Minimal fixed-window rate limit (in-process). No Redis in this env —
-// production multi-instance deploys need a shared store (documented in
-// docs/security.md). ponytail: Map + interval, not a plugin dependency.
+// Minimal fixed-window rate limit (in-process). Single API instance by
+// design (inline delivery worker, no Redis) — multi-instance deploys need a
+// shared store (documented in docs/security.md). ponytail: Map + interval,
+// not a plugin dependency. Cap the key space so a spoofed-IP flood cannot
+// grow the Map without bound.
 function rateLimit(
   app: FastifyInstance,
   opts: {
@@ -140,6 +142,7 @@ function rateLimit(
   },
 ): void {
   const hits = new Map<string, { n: number; t: number }>();
+  const MAX_KEYS = 10_000;
   setInterval(() => {
     const now = Date.now();
     for (const [k, v] of hits) {
@@ -153,6 +156,7 @@ function rateLimit(
     const now = Date.now();
     let bucket = hits.get(key);
     if (!bucket || now - bucket.t > opts.windowMs) {
+      if (hits.size >= MAX_KEYS) hits.clear();
       bucket = { n: 0, t: now };
       hits.set(key, bucket);
     }
@@ -207,8 +211,9 @@ export async function buildApp() {
     credentials: true,
   });
 
-  // Abuse-sensitive surfaces only: webhook ingest (HMAC already gates it —
-  // this bounds flood cost) and platform-admin config writes.
+  // Abuse-sensitive surfaces: webhook ingest (HMAC already gates it — this
+  // bounds flood cost), platform-admin config writes, and OAuth connect /
+  // callback (token exchange is expensive; IP-keyed before session resolve).
   rateLimit(app, {
     max: 60,
     windowMs: 60_000,
@@ -219,6 +224,15 @@ export async function buildApp() {
     max: 30,
     windowMs: 60_000,
     match: (path, method) => path.startsWith("/admin/") && method !== "GET",
+    keys: (req) => req.ip,
+  });
+  rateLimit(app, {
+    max: 20,
+    windowMs: 60_000,
+    match: (path, method) =>
+      (path === "/social-accounts/instagram/connect" ||
+        path === "/social-accounts/instagram/callback") &&
+      method === "GET",
     keys: (req) => req.ip,
   });
 
