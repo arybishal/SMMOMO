@@ -150,7 +150,7 @@ sequenceDiagram
 | **Language** | [TypeScript 5](https://www.typescriptlang.org/) | Strict typing across workspaces |
 | **Styling** | [Tailwind CSS 3.4](https://tailwindcss.com/) | Responsive dark/light theme ready UI |
 | **Backend (Planned)** | [Node.js](https://nodejs.org/) & [Fastify](https://fastify.dev/) | Ultra-low latency API service |
-| **Database (Planned)** | [PostgreSQL](https://www.postgresql.org/) & [Prisma](https://www.prisma.io/) | Type-safe persistence and migrations |
+| **Database** | [Supabase](https://supabase.com/) (PostgreSQL) | Managed Postgres + Auth + RLS; migrations in `supabase/migrations/` |
 | **Queue (Planned)** | [Redis](https://redis.io/) & [BullMQ](https://bullmq.io/) | Distributed job processing |
 | **Containers (Planned)** | [Docker](https://www.docker.com/) & Docker Compose | Consistent local and production environments |
 | **Social API** | [Meta Graph API](https://developers.facebook.com/) | Official Instagram Messaging & Webhooks |
@@ -165,7 +165,8 @@ smmomo/
 │   └── web/              # Next.js frontend application
 │       ├── app/          # App router pages (dashboard, automations, inbox, settings)
 │       ├── components/   # UI components and layout shells
-│       └── lib/          # API layer and mock datasets
+│       └── lib/          # API layer, mock datasets, Supabase clients
+├── supabase/             # Supabase config + SQL migrations
 ├── packages/             # Shared libraries and types (reserved)
 ├── docs/                 # Architecture records and assets
 │   └── assets/           # Visual diagrams, mockups, and banners
@@ -229,11 +230,17 @@ cp .env.example .env
 | Variable | Status | Purpose |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | Reserved | Base URL of the Fastify API (default: `http://localhost:4000`) |
-| `DATABASE_URL` | Reserved | PostgreSQL connection URI |
+| `NEXT_PUBLIC_SUPABASE_URL` | Active | Supabase project URL (database foundation) |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Active | Supabase publishable key — browser-safe by design; never a `service_role`/`sb_secret_` key in the web app |
+| `DATABASE_URL` | Reserved | PostgreSQL connection URI (Supabase provides it if a direct SQL path is needed) |
 | `REDIS_URL` | Reserved | Redis connection URI for queueing |
 | `META_APP_ID` | Reserved | Meta Developer App ID |
 | `META_APP_SECRET` | Reserved | Meta Developer App Secret |
 | `META_WEBHOOK_VERIFY_TOKEN` | Reserved | Webhook verification handshake secret |
+
+Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
+`npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a
+migration from the dashboard SQL Editor).
 
 > [!IMPORTANT]
 > Secrets are strictly ignored by `.gitignore`. Real credentials must never be committed.

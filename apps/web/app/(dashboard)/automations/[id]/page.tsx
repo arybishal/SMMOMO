@@ -101,10 +101,13 @@ export default async function AutomationDetailPage({
         </Card>
       </div>
 
-      <div className="mt-6 flex gap-3">
-        <button type="button" className={buttonClasses("secondary")} disabled>
-          Edit (Task 006)
-        </button>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          href={`/automations/new?edit=${automation.id}`}
+          className={buttonClasses("secondary")}
+        >
+          Edit
+        </Link>
         <button type="button" className={buttonClasses("secondary")} disabled>
           {automation.status === "active" ? "Pause" : "Activate"}
         </button>

@@ -6,13 +6,13 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 005 - Automation List (COMPLETE)
+Current Task: Task 008 - Inbox
 
-Last Completed Task: Task 005 - Automation List
+Last Completed Task: Task 007 - Posts + Supabase Foundation
 
-Next Task: Task 006 - Automation Builder
+Next Task: Task 008 - Inbox
 
-Last Updated: 2026-09-23 (Task 005)
+Last Updated: 2026-09-23 (Task 007)
 
 ---
 
@@ -43,8 +43,8 @@ Last Updated: 2026-09-23 (Task 005)
 | 003 | Design System | COMPLETE |
 | 004 | Dashboard | COMPLETE |
 | 005 | Automation List | COMPLETE |
-| 006 | Automation Builder | NOT STARTED |
-| 007 | Posts | NOT STARTED |
+| 006 | Automation Builder | COMPLETE |
+| 007 | Posts + Supabase Foundation | COMPLETE |
 | 008 | Inbox | NOT STARTED |
 | 009 | Analytics | NOT STARTED |
 | 010 | Settings | NOT STARTED |
@@ -70,46 +70,426 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 006 - Automation Builder
+## Task 008 - Inbox
 
 Status: NOT STARTED
 
 ### Objective
 
-Turn `/automations/new` (and the disabled Edit path on `/automations/[id]`)
-into a complete V1 automation builder UX: post selection, keyword rule,
-private DM, optional public reply, and a live preview — without faking
-persistence.
+Refine `/inbox` from its Task 002/003 first-pass view into a finished V1
+surface — search/filter over comments and deliveries, clearer outcome
+states, empty states — using only existing `lib/api/inbox` data, no new
+deps, no fake actions.
 
-### Requirements
+### Requirements (derived from this file's note on Tasks 004–010 + current
+repo state — confirm against the master prompt before starting)
 
-- Refine `app/(dashboard)/automations/new/page.tsx` in place; reuse data via
-  `listPosts()` (posts API already exists) — no new data layer.
-- Fields: post/reel selector (from API data), trigger keyword (required,
-  trimmed, non-empty validation), private DM textarea (required; keep
-  `{{first_name}}` variable visible), optional public reply toggle + field.
-- Live preview panel: renders the DM/reply as the follower would see it
-  (client-side, no backend, no chart/preview engine dependency).
-- Validation feedback inline (accessible: labels, focus states, aria where
-  needed); submit button disabled until valid — Save itself stays disabled /
-  preview-style until mutation API exists (Task 014). No fake persistence,
-  no fake activate flow (existing project convention).
-- Wire the Edit action on `/automations/[id]` to open the builder prefilled
-  (or clearly disabled with the same convention if prefilled routing is
-  genuinely awkward — prefer prefilled via query/route state).
-- Responsive: form and preview stack on mobile; no horizontal scroll.
-- Tokens/primitives only; no new deps; mock-only.
-- Do not touch unrelated routes.
+- Refine `app/(dashboard)/inbox/page.tsx` in place; reuse
+  `listRecentComments()` + `listRecentDeliveries()` only — no new data
+  layer, no fetch outside `lib/api`.
+- Inspect the current page first (it already shows comments + delivery
+  results with status badges) and deepen rather than rebuild.
+- Likely additions if data supports them: kind/status filter (matched vs
+  unmatched; delivery status tones), search over comment text/username,
+  empty + no-match states, richer per-row context (joined automation name
+  via `commentId`, `<time dateTime>` relative/absolute times).
+- Keep client-side state in a colocated island (Task 005/007 pattern);
+  server page keeps loading.
+- Accessibility: labeled search/filter controls, keyboard-operable
+  buttons, text (not color-only) statuses.
+- Tokens/primitives only; no new deps; mock-only; do not touch unrelated
+  routes; no fake reply/retry/delete actions (deliveries are read-only
+  until Task 014+).
 
 ### Notes
 
-- Task 005 list links into detail; detail currently has disabled
-  `Edit (Task 006)` / `Pause` buttons — Task 006 owns the Edit path.
-- Full activation workflow / Meta calls remain later tasks (015–018).
+- Dashboard already joins deliveries↔automations via `commentId` — same
+  join pattern applies here.
+- Inbox-specific detail route: only add if the master prompt demands it.
 
 ---
 
 # Completed Tasks
+
+## Task 007 - Posts + Supabase Foundation
+
+Status: COMPLETE
+
+Completed (frontend pass — Posts management UI):
+
+- `/posts` rewritten from a first-pass 4-card grid into an admin-SaaS
+  management screen: server page loads `listPosts()` + `listAutomations()`
+  + `getInstagramAccount()` in one `Promise.all`, renders `PageHeader`
+  ("Posts" / spec copy), connection context, empty states, and delegates
+  filter/search to a colocated client island.
+- Connection context (real data only): connected → `Badge success
+  "Connected"` + `Instagram · @username`; missing account → notice
+  ("Instagram not connected" + posts-become-available copy + `Open social
+  accounts` → `/settings/social-accounts`); `status === "error"` →
+  "Instagram needs attention" + out-of-date copy + same CTA. No fake
+  connect/refresh flow.
+- Client island `posts/list.tsx` (Task 005 pattern): media-type filter
+  All / Reels / Posts / Carousels (`aria-pressed`, labels follow actual
+  `IMAGE|REEL|CAROUSEL` data) + caption/id search (`aria-label`);
+  filters combine (AND); `aria-live` "Showing X of Y" only while filtered;
+  "No posts match your filters." + `Clear filters` for the no-match branch.
+- Desktop layout: columnar table-style rows inside `Card` (`lg:grid-cols-12`
+  with header row Post / Type / Published / Automations / Action). Post
+  cell = media thumb (gradient + `IconPosts` placeholder while
+  `mediaUrl` is null; real `<img alt=caption>` path kept), caption
+  (truncated + full in `title`), likes · comments meta. Type = Badge,
+  Published = `<time dateTime>` with year, Automations = joined-by-`postId`
+  count ("1 automation" / "2 automations" / "No automations") with each
+  automation name linked to its detail page, Action = `Create automation`
+  → `/automations/new?post=<id>` + `View on Instagram` (real `permalink`,
+  `target="_blank" rel="noopener noreferrer"`, caption-bearing
+  `aria-label`).
+- Mobile layout: same rows collapse to stacked cards with `lg:hidden`
+  labels (Type / Published / Automations) — no table library, no
+  horizontal overflow.
+- Empty state (0 posts + connected): "No Instagram content yet" card
+  explaining import arrives with the Instagram API integration — no fake
+  sync CTA. Empty + disconnected: the connection notice alone (no
+  duplicated card).
+- Builder integration (Task 006 touch, spec §7): `/automations/new` now
+  also reads `?post=<id>` through the same query-param prefill mechanism —
+  server page validates the id against `listPosts()` and passes
+  `initialPostId` to the island; `?edit=` prefill always wins when both
+  are present; unknown/empty `post` id is ignored (renders New, empty
+  selector) — deliberately NOT a 404, since it's a hint, not a resource.
+
+Completed (Supabase foundation pass):
+
+- Supabase configuration: `NEXT_PUBLIC_SUPABASE_URL` +
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` wired through env only — no
+  hard-coded values in source (grep-verified); publishable key documented
+  as browser-safe; **no service_role / `sb_secret_` key exists anywhere in
+  this repo** (grep-verified — hits are only "never use it" comments).
+  `.env.example` updated with both vars + warnings; local `.env.local`
+  created (gitignored — `.gitignore` covers `.env`, `.env.local`,
+  `.env.*.local`; `.env.example` correctly NOT ignored, re-verified with
+  `git check-ignore`).
+- Existing-schema inspection (read-only, before any design): PostgREST
+  accepts the publishable key; probed 20 domain-candidate tables
+  (workspaces, workspace_members, social_accounts, posts, automations,
+  comments, deliveries, usage, users, profiles, migrations, …) — **every
+  one returns PGRST205 "table not found" → public schema is empty**;
+  Storage buckets `[]` (none); GoTrue healthy (v2.197.0). No duplicate
+  objects touched — nothing existed to duplicate, delete, or reset.
+- Supabase workflow: `npx supabase init` scaffolded `supabase/config.toml`
+  + CLI `.gitignore`; standard `supabase/migrations/` directory adopted.
+- Migration `supabase/migrations/20260923120000_smmomo_foundation.sql`
+  (CREATED, **NOT YET APPLIED**): minimum multi-tenant schema
+  `workspaces → workspace_members / social_accounts → posts → automations`
+  with FK cascades, CHECK constraints matching frontend unions
+  (media type, account status, automation status, platform, role),
+  indexes on every FK/lookup column. RLS enabled on all 5 tables with
+  `to authenticated` SELECT policies gated by a `security definer`
+  `is_workspace_member(workspace_id)` helper (revoked from `anon`,
+  granted to `authenticated`); **zero `using (true)` policies; no
+  mutation policies yet** (app writes arrive with backend tasks).
+  Apply is blocked in this environment: `npx supabase link` fails with
+  `LegacyPlatformAuthRequiredError` (no `SUPABASE_ACCESS_TOKEN`, no
+  dashboard session, no Docker for local stack) — file header documents
+  both apply paths: `supabase link` + `db push` once a token exists, or
+  paste into the dashboard SQL Editor (token-free). Never reset/wipe.
+- Auth dependency decision (spec §17 — critical): authentication is still
+  **mock-only** (login/register just navigate to `/dashboard`; no
+  Supabase session exists). Therefore: **Posts stay on the mock
+  implementation (`USE_MOCK = true`)**; no unrestricted query of private
+  data; no insecure "temporary" RLS policy. Real reads unlock after
+  Task 013 (Supabase auth + workspace seeding), at which point the same
+  RLS policies already enforce workspace isolation with zero policy
+  changes.
+- Supabase client architecture (official `@supabase/supabase-js` — added
+  as the only new dependency; no ORM, no extra auth framework):
+  `lib/supabase/client.ts` (browser, publishable key, lazy factory) and
+  `lib/supabase/server.ts` (server components; `persistSession: false`;
+  **publishable key only**, lazy env-checked factory that throws a clear
+  message if env is missing — mock mode never calls it). Cookie/session
+  wiring (`@supabase/ssr`) deferred to Task 013 when sessions exist.
+- Posts API (`lib/api/posts.ts`): same public shape (`listPosts`,
+  `getPost` → `Post[]`), branch preserved inside the API layer —
+  `USE_MOCK=true` → `request()`/mocks (unchanged default);
+  `USE_MOCK=false` → Supabase query mapped snake_case rows → `Post`
+  (manual `PostRow` interface until `supabase gen types` can run with a
+  CLI token; deferred). Query deliberately carries **no workspace_id
+  filter — RLS is the isolation boundary**. Errors throw to Next's error
+  page (project convention, no swallowed try/catch). Other API modules
+  untouched (their `USE_MOCK=false` target remains the future Fastify
+  API per Task 011+). UI/Posts page unchanged — it cannot tell which
+  implementation is behind the seam.
+- Posts UI: the frontend pass above already satisfies §10–16 (header,
+  table/cards, search/filter, Create-automation preselect, honest
+  automation counts, empty + no-match states, connection context, no fake
+  Sync). **Social-account column intentionally omitted**: no reachable
+  data source populates it (mocks lack `socialAccountId`; Supabase reads
+  are RLS-empty pre-auth) — per spec "if a field is not available, adapt
+  the UI"; DB `posts.social_account_id` exists for when data does.
+- README: env table gained the two Supabase rows (+ migration workflow
+  note); tech-stack Database row now Supabase (replacing the stale
+  PostgreSQL+Prisma plan); repo-layout block gained `supabase/`.
+
+What it does:
+
+SMMOMO now has Supabase as its real database foundation: an inspected,
+empty project; a proper CLI-standard migration defining the full
+multi-tenant ownership chain with strict membership RLS; browser/server
+client seams behind the existing `USE_MOCK` switch; and Posts wired
+through `lib/api` so flipping one flag moves it from mocks to Supabase —
+while authentication stays mock-only and nothing insecure was shipped.
+
+Files (key):
+
+- supabase/config.toml, supabase/.gitignore (NEW — `npx supabase init`
+  scaffold)
+- supabase/migrations/20260923120000_smmomo_foundation.sql (NEW — full
+  schema + RLS; authored, not yet applied)
+- apps/web/lib/supabase/client.ts (NEW — browser client factory)
+- apps/web/lib/supabase/server.ts (NEW — server client factory)
+- apps/web/lib/api/posts.ts (added USE_MOCK=false → Supabase branch)
+- apps/web/package.json (added `@supabase/supabase-js`)
+- .env.example (Supabase vars + no-secret warnings), .env.local (local,
+  gitignored)
+- README.md (env table, tech-stack DB row, repo layout)
+- apps/web/app/(dashboard)/posts/page.tsx (rewritten: server page,
+  connection context, empty states, delegates list)
+- apps/web/app/(dashboard)/posts/list.tsx (NEW — client filter/search
+  island + table/card rows; not a route)
+- apps/web/app/(dashboard)/automations/new/page.tsx (reads `?post=`
+  prefill param alongside `?edit=`)
+- apps/web/app/(dashboard)/automations/new/builder.tsx (accepts
+  `initialPostId`; edit prefill takes precedence)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- `lib/api/posts.ts` keeps its public shape (`listPosts`, `getPost` →
+  `Post[]`) and gains an implementation branch: `USE_MOCK=true` →
+  existing `request()` + `mockPosts` (default, unchanged);
+  `USE_MOCK=false` → Supabase `public.posts` via `getServerSupabase()`,
+  rows mapped to the unchanged `Post` type (snake_case ↔ camelCase).
+  Mock layer NOT deleted (spec §9). `getPost` reuses the same fetch.
+  Other API modules untouched. No new frontend types; no mock-data
+  changes; Post→automation counts remain real `postId` joins.
+
+Error & loading handling:
+
+- No try/catch (convention — `request()` failures throw to Next's error
+  page); no fake in-page error state, since the current abstraction has no
+  recoverable in-page error path; no `loading.tsx` (mocks resolve
+  instantly). Structure is compatible with the future real API.
+
+Accessibility:
+
+- h1 (`PageHeader`); search input has `aria-label`; filter group has
+  `role="group"` + `aria-label` + `aria-pressed` per button; mobile-only
+  labels hidden at `lg` (desktop headers present); thumbs are decorative
+  (`aria-hidden`) or real images with caption alt; external links have
+  caption-bearing `aria-label` + new-tab hint; state text always literal
+  ("Connected", "No automations", counts) — never color-only; focus
+  outlines from shared button/input chrome.
+
+Validation:
+
+- `npm run typecheck` — passed (includes new Supabase modules).
+- `npm run lint` — passed.
+- `npm run build` — passed (15 routes; `/automations/new` remains ƒ,
+  `/posts` remains static ○; `@supabase/supabase-js` compiles in).
+- Migration validation: authored under the standard CLI layout; **cannot
+  be applied or `db push`ed from this environment** (no
+  `SUPABASE_ACCESS_TOKEN`, no Docker) — `npx supabase link` error captured
+  in Task notes. SQL reviewed manually (FK/CHECK/index/RLS structure);
+  server-side execution validation deferred until apply via SQL Editor or
+  linked `db push`.
+- Remote inspection re-run post-design: 20/20 candidate tables still
+  PGRST205 (empty schema confirmed — no accidental objects created);
+  storage still `[]`.
+- Production-server URL sweep (`next start` in apps/web): 19/19 —
+  `/posts`, `/automations`, `/automations/new`,
+  `?post=post_1` → 200; `?edit=auto_1` → 200; `?edit=` → 200;
+  `?edit=nope` → 404; `/automations/auto_1` → 200;
+  `/automations/missing` → 404; `/settings/social-accounts`, `/dashboard`,
+  `/`, `/login`, `/register`, `/inbox`, `/analytics`, `/settings`,
+  `/settings/account`, `/settings/usage` → 200.
+- `/posts` HTML assertions (all pass): spec description copy; Connected
+  badge + `bishal.grows`; ≥4 `aria-pressed` filter buttons incl. Reels +
+  Carousels labels; search `aria-label`; all 4 captions; REEL/IMAGE/
+  CAROUSEL badges; `Sep 18, 2026` date; likes/comments meta (verified
+  node-aware — React `<!-- -->` separators defeat naive substrings); all 4
+  automation names; exactly 4 `?post=post_N` Create-automation hrefs;
+  exactly 4 `target="_blank" rel="noopener noreferrer"` external links;
+  `hidden lg:grid` + `lg:grid-cols-12` header; `lg:hidden` mobile labels;
+  Published/Automations/Action column labels; filter group `aria-label`.
+- Builder prefill HTML assertions (all pass): `?post=post_1` → option
+  `selected` + Save still `disabled` (keyword empty); `?post=nope` → no
+  post selected, renders "New automation"; `?edit=auto_1` → its post
+  selected + Save enabled (precise `disabled` attribute check — Tailwind
+  `disabled:` classes cause false positives in naive regexes).
+- Security greps: no `sb_secret_`/`service_role` credential values in the
+  repo (only explanatory comments/README/migration text mention the term);
+  no hard-coded Supabase URL or key in `apps/web` source (env-only);
+  `git check-ignore` confirms `.env`, `.env.local`, `.env.*.local`
+  ignored and `.env.example` tracked.
+- Responsive: structural verification only (breakpoint classes in served
+  HTML). No browser automation in this environment — real-viewport eyeball
+  QA + click-through of filter/search/Create-automation left to owner.
+
+Known limitations:
+
+- **Migration not applied** — schema exists only in the SQL file until an
+  access token (`supabase login`) or dashboard SQL Editor run applies it.
+  Posts' Supabase branch therefore has no tables yet (it is also
+  unreachable while `USE_MOCK=true`).
+- **Posts stay on mocks** — by design until Task 013 auth + workspace
+  membership exist; flipping `USE_MOCK=false` today yields RLS-empty
+  results (anonymous), not data. Documented as the security model working.
+- No generated Supabase types (`supabase gen types` needs a CLI token) —
+  `PostRow` interface is hand-written and must track the migration.
+- No `@supabase/ssr`/cookie sessions yet — added in Task 013 with real
+  auth; server client is sessionless (anonymous) until then.
+- FK/index/policy details of the *hosted* database cannot be introspected
+  from this environment (no token) — discovery used PostgREST probes
+  (table existence, buckets, GoTrue health) only.
+- Filter/search interaction and the `?post=` preselect click-through are
+  client-side behavior — compile- and SSR-verified only (no browser
+  tooling; no new deps allowed).
+- Empty-post, disconnected, and error-connection branches are
+  compile-verified only (mocks: 4 posts, account connected).
+- No in-page error state (no recoverable error path in `request()` today);
+  real API failures land on Next's error page — revisit with Task 014.
+- Engagement (likes/comments) shown as Post-cell meta, not its own column;
+  no Social-account column (no reachable data populates it — see above).
+- No summary counts strip (spec didn't ask; filter row covers scan needs).
+- "Create automation" does not persist anything (builder Save is Task
+  014) — it only preserves the selected post into the builder.
+
+Deferred work:
+
+- Apply migration (SQL Editor or linked `db push`) + re-inspect schema.
+- Supabase auth + workspace seeding + cookie sessions (Task 013).
+- Generated DB types; member INSERT/UPDATE policies or service-role
+  backend writes (Task 014+); comments/deliveries/usage tables; social
+  account column on Posts once real data includes it; Meta sync (015+).
+
+Next:
+
+Task 008 - Inbox
+
+## Task 006 - Automation Builder
+
+Status: COMPLETE
+
+Completed:
+
+- `/automations/new` rewritten from concept-steps placeholder into the real
+  builder: server page reads `searchParams` (`Promise` — awaited per Next 16
+  docs), loads `listPosts()` + optional `getAutomation(edit)`, renders
+  `PageHeader` ("New automation" / "Edit automation" with editing name) and
+  one client island.
+- Client island `new/builder.tsx`: post/reel `<select>` from `listPosts()`
+  (new `Select` primitive reusing shared field chrome), required trimmed
+  keyword, required private-DM textarea with visible
+  `{{first_name}}` code-chip hint + placeholder, optional public-reply
+  checkbox that reveals a required-when-on reply textarea (text preserved
+  when toggled off).
+- Validation: derived `isValid` gates Save (`disabled` until valid);
+  per-field errors appear on blur (`touched`), wired with `aria-invalid` +
+  `aria-describedby` → `<p id="…-error" className="text-danger">` (text, not
+  color-only); `required` attrs for a11y with `noValidate` form so custom
+  messages own the UX.
+- Save: `onSubmit` preventDefault only — persistent hint under the buttons
+  ("Saving and activation arrive with Task 014 — … nothing is stored yet").
+  No fake persistence, no fake activate flow; Cancel returns to
+  `/automations` (new) or `/automations/[id]` (edit).
+- Live preview panel (right column, stacks on mobile via
+  `lg:grid-cols-2`): selected-post caption + example follower comment once a
+  keyword is typed, private-DM bubble (`bg-primary-soft`, `whitespace-
+  pre-wrap`) with `{{first_name}}` rendered as "Sarah", optional public-reply
+  bubble, empty-state copy until the DM is written, and a footnote that
+  names the sample substitution whenever the variable is used.
+- Edit path wired: detail page's disabled `Edit (Task 006)` button replaced
+  with an enabled Link → `/automations/new?edit=<id>`; builder prefills
+  postId/keyword/DM/reply from the automation (Save enabled immediately —
+  prefilled data is valid). Unknown `edit` id → `notFound()` (404, same as
+  detail); empty `?edit=` treated as New.
+- Pause/Activate on the detail page untouched (still disabled — Task 014).
+
+What it does:
+
+`/automations/new` is now a complete V1 builder experience — choose post,
+set keyword, compose DM/reply, see exactly what the follower receives,
+with honest validation and zero faked backend behavior — and the detail
+page's Edit action lands on it prefilled. Architecture unchanged: server
+fetch → props → one client island; zero new dependencies.
+
+Files (key):
+
+- apps/web/app/(dashboard)/automations/new/page.tsx (rewritten: server
+  page, searchParams Promise, posts + optional edit prefill)
+- apps/web/app/(dashboard)/automations/new/builder.tsx (NEW — client
+  island: form state, validation, live preview; not a route)
+- apps/web/app/(dashboard)/automations/[id]/page.tsx (Edit → prefilled
+  builder link; buttons row now wraps)
+- apps/web/components/ui/input.tsx (added `Select` sharing `fieldClasses`)
+- TASK.md, Tree.md (documentation)
+
+API/mock changes:
+
+- None. Consumed existing `listPosts()` and `getAutomation()`; no new types,
+  fields, endpoints, or mock objects.
+
+Error & loading handling:
+
+- Unknown `?edit=` id → `notFound()`; empty `?edit=` renders New (verified).
+- No try/catch (convention — requests throw to Next's error page); no
+  `loading.tsx` (mocks resolve instantly).
+
+Accessibility:
+
+- h1 (`PageHeader`) → h2 (`Setup`/`Preview`); `<Label htmlFor>` on every
+  field; checkbox has a real label; errors announced via `aria-describedby`
+  + visible text; `aria-invalid` set only when showing; focus outlines from
+  shared field/button chrome; external links/state never color-only.
+
+Validation:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed (15 routes; `/automations/new` is now dynamic ƒ
+  because it reads `searchParams`).
+- Production-server URL sweep (`next start`): 18/18 — `/`, `/login`,
+  `/register`, `/dashboard`, `/automations`, `/automations/new`,
+  `?edit=auto_1` → 200; `?edit=` → 200; `?edit=nope` → 404;
+  `/automations/auto_1` → 200; `/automations/missing` → 404; `/posts`,
+  `/inbox`, `/analytics`, `/settings`, `/settings/account`,
+  `/settings/social-accounts`, `/settings/usage` → 200.
+- HTML assertions (served markup): new-page Save carries the `disabled`
+  attribute; edit-page Save does not; prefilled `value="CHECK"` + DM text +
+  checked reply toggle + "Sarah" already rendered in the preview + Cancel
+  href back to the detail; detail has `href="/automations/new?edit=auto_1"`,
+  old `Edit (Task 006)` gone, Pause still disabled; Task 014 hint present;
+  preview empty-state and select placeholder present.
+- Responsive: structural verification only (`lg:grid-cols-2` form+preview
+  stack below lg). No browser automation in this environment — real-viewport
+  eyeball QA left to owner.
+
+Known limitations:
+
+- Typing/blurring/preview updates are client-side behavior — compile- and
+  SSR-verified only, not driven by automated browser interaction (no
+  tooling; no new deps allowed).
+- Save click does nothing beyond `preventDefault` (by design until Task
+  014); the persistent hint explains this.
+- Builder has no name field — Task 006 spec's field list didn't include one;
+  `automation.name` is display-only (server-side naming = later task).
+- Reply-off keeps the typed text in state but hides the field (re-toggle
+  restores it) — runtime behavior not exercised by automation.
+- No URL-persisted draft state (out of scope; no state libraries).
+
+Next:
+
+Task 007 - Posts
 
 ## Task 005 - Automation List
 
@@ -556,6 +936,13 @@ None.
 - **2026-09-23** — Task 003: semantic `@theme` tokens in `globals.css` are the
   single style source; UI uses token classes, light-only palette copied 1:1 from
   Tailwind v4 oklch theme (zero visual shift by construction).
+- **2026-09-23** — Task 007 (Supabase): Supabase is the database foundation;
+  UI keeps the `UI → lib/api/* → (USE_MOCK ? mock : implementation)` seam with
+  posts branching to Supabase when mocks are off. Publishable key only in the
+  web app — service_role/secret keys never enter this repo. RLS is the
+  multi-tenant isolation boundary (membership helper, no `using (true)`
+  policies). App stays on mocks until Task 013 auth exists; migration lives in
+  `supabase/migrations/` and applies via CLI link+push or dashboard SQL Editor.
 
 ---
 

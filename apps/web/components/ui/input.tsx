@@ -1,4 +1,8 @@
-import type { InputHTMLAttributes, LabelHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  LabelHTMLAttributes,
+  SelectHTMLAttributes,
+} from "react";
 
 export function Label(props: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
@@ -32,4 +36,11 @@ export function Textarea({
   return (
     <textarea className={`${fieldClasses} ${className}`} {...props} />
   );
+}
+
+export function Select({
+  className = "",
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`${fieldClasses} ${className}`} {...props} />;
 }
