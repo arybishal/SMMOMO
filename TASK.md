@@ -6,15 +6,33 @@ Status: IN DEVELOPMENT
 
 Current Phase: Frontend Foundation
 
-Current Task: Task 018 - BullMQ Delivery
+Current Task: Task 019 - Usage Tracking
 
-Last Completed Task: Task 017 - Automation Engine
+Last Completed Task: Task 018 - BullMQ Delivery
 
-Next Task: Task 018 - BullMQ Delivery
+Next Task: Task 019 - Usage Tracking
 
-Last Updated: 2026-09-23 (fetch-failed investigation after Task 017)
+Last Updated: 2026-09-23 (Task 018)
 
-Verification: 2026-09-23 **`TypeError: fetch failed` investigation PASSED** —
+Verification: 2026-09-23 Task 018 validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260923200000_delivery_worker.sql`
+APPLIED via `supabase db push` (status check + `attempts` +
+`claimed_at` + partial queued index); worker started on API process
+(`pollMs=1500`, `graph=http://127.0.0.1:4090` validation stub);
+**failed path first** (real Graph with invalid token): 4 rows →
+`status=failed`, `attempts=1`, `error=graph_dm_401/graph_reply_401`
+(Meta OAuth text), `failed_count=4`; **requeue → sent path** (Graph
+stub 200): same rows → `status=sent`, `attempts=2`, errors cleared,
+`dm_sent_count` 0→2 (private_dm only; public_reply does not bump
+dm counter); **claim idempotency**: PATCH `status=eq.queued` on an
+already-`sent` row returns `[]` (0 rows — no double-claim); inline
+poller idempotent under single-process re-entry (`running` guard);
+member route sweep 6/6 200; webhook GET verify → 200 challenge echo;
+`/health` 200; secret **value** scan clean; Redis absent → honest
+inline poll documented (not BullMQ); Graph live Meta send not proven
+(no messaging perms — stub only for validation); Task 019 next.
+
+Prior verification (fetch-failed investigation): 2026-09-23 **`TypeError: fetch failed` investigation PASSED** —
 root cause = Fastify API not listening on `:4000` (stale/zombie `tsx watch`
 `dev:api` processes after prior validation stopped servers; port free while
 Next on `:3000` kept serving). Reproduced: `PORT_4000=False` while
@@ -142,7 +160,7 @@ blocking anon); see the Task 012 record below.
 | 015 | Meta OAuth | COMPLETE |
 | 016 | Meta Webhooks | COMPLETE |
 | 017 | Automation Engine | COMPLETE |
-| 018 | BullMQ Delivery | NOT STARTED |
+| 018 | BullMQ Delivery | COMPLETE |
 | 019 | Usage Tracking | NOT STARTED |
 | 020 | Security Hardening | NOT STARTED |
 | 021 | Testing | NOT STARTED |
@@ -157,39 +175,102 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 018 - BullMQ Delivery
+## Task 019 - Usage Tracking
 
 Status: NOT STARTED
 
 ### Objective
 
-Consume queued `deliveries` rows (Task 017 enqueue) and perform actual
-Instagram Graph API sends (private DM + optional public reply) with
-retry/failed accounting — the outbound half of comment → DM.
+TODO — read master prompt §usage / Task 019 notes before implementing.
 
-### Requirements (confirm against the master prompt before starting)
+### Requirements
 
-- Process `deliveries` where `status=queued`.
-- Private DM + optional public reply via Graph API using the workspace
-  social account token (API env / service path only — never browser).
-- Update delivery status queued → sent/delivered/failed (+ error text).
-- Increment `automations.dm_sent_count` / `failed_count` as appropriate.
-- Idempotent: must not double-send on worker redelivery.
-- Decide Redis/BullMQ vs honest inline poll (017 documented no Redis —
-  same gap likely applies; document whichever path ships).
-- Validation: typecheck/lint/build, queued → sent/failed proof, regressions,
-  no secrets in web.
-
-### Notes
-
-- 017 already enqueues private_dm always + public_reply when configured;
-  recipient = commenter username. Graph send specifics (recipient id vs
-  username) may require IG professional account messaging API details —
-  document honestly if live send cannot be proven without Meta app perms.
+- See master prompt; do not invent scope.
 
 ---
 
 # Completed Tasks
+
+## Task 018 - BullMQ Delivery
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 019.
+
+### Objective (from spec)
+
+Consume queued `deliveries` rows (Task 017 enqueue) and perform actual
+Instagram Graph API sends (private DM + optional public reply) with
+retry/failed accounting.
+
+### What shipped
+
+- **No Redis/BullMQ** in this environment (port 6379 closed; same gap as
+  017). Shipped **honest inline poll** on the API process — documented,
+  not dressed up as BullMQ. Upgrade path: swap `startDeliveryWorker`
+  interval for a BullMQ worker when Redis exists.
+- `supabase/migrations/20260923200000_delivery_worker.sql` APPLIED
+  (`supabase db push`): status check gains `processing`; columns
+  `attempts`, `claimed_at`; partial index on `status=queued`.
+- `apps/api/src/delivery.ts` (new): claim `queued → processing` (filter
+  `status=eq.queued` + `return=representation` — empty ⇒ lost race, skip);
+  load comment → automation message text + workspace IG token;
+  Graph send (`META_GRAPH_BASE` default `https://graph.instagram.com`,
+  env-overridable for validation stub only); finalize `sent` / requeue
+  `queued` (retryable network/5xx/429, max 3 attempts) / `failed` +
+  `error` text; bump `automations.dm_sent_count` on private_dm sent and
+  `failed_count` on permanent fail (public_reply success does not bump
+  dm counter — no public-reply counter column exists yet).
+- `apps/api/src/server.ts`: `startDeliveryWorker(app.log)` after listen.
+- Graph endpoints: private_dm → `POST {base}/{ig_user_id}/messages`
+  (recipient = commenter **username** from webhook); public_reply →
+  `POST {base}/{ig_comment_id}/replies`. Non-2xx → `graph_dm_<status>` /
+  `graph_reply_<status>` + Meta body snippet (truncated); network throw →
+  `*_network` retryable.
+
+### Files
+
+- apps/api/src/delivery.ts (new)
+- apps/api/src/server.ts (worker start)
+- supabase/migrations/20260923200000_delivery_worker.sql (new)
+- TASK.md, Tree.md
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`, `npm run build` — all exit 0.
+- Migration: `npx supabase db push` → Finished, lists exactly `20260923200000_delivery_worker.sql`.
+- Worker boot: API log `delivery worker started` with `pollMs=1500`, `graph=http://127.0.0.1:4090`.
+- **Failed path (real Graph, invalid token)**: 4 queued rows → all
+  `status=failed`, `attempts=1`, `error` =
+  `graph_dm_401`/`graph_reply_401` with Meta OAuth JSON; automation
+  `failed_count=4`.
+- **Sent path (Graph stub 200 on :4090)**: requeued same 4 →
+  `status=sent`, `attempts=2`, `error` cleared, stub hits for
+  `POST /{ig_user_id}/messages` and `POST /{ig_comment_id}/replies`;
+  `dm_sent_count` 0→2 (two private_dm); additional engine-enqueued row
+  also sent (`dm_sent_count` climbed with later activity).
+- **Claim idempotency**: PATCH `deliveries?id=eq.<sent>&status=eq.queued`
+  → body `[]` (0 rows); row stays `sent`. Second claim on a claimed
+  `processing` row also empty. In-process poller `running` guard prevents
+  overlapping intervals.
+- **Regressions**: authed `/dashboard` `/inbox` `/analytics`
+  `/automations` `/posts` `/settings` → 200; webhook GET verify → 200
+  challenge echo; `/health` → 200.
+- Secret value scan: no service-role/PAT values in tracked sources.
+
+### Known limitations / honest notes
+
+- **Live Meta send not proven** — no Instagram messaging app permissions
+  in this environment. Success path proven against a local Graph stub
+  (`META_GRAPH_BASE=http://127.0.0.1:4090`); default env remains real
+  Graph host (never fakes 200).
+- Recipient is commenter **username**; some Graph modes require a
+  numeric recipient id — non-2xx surfaces as `failed` with Meta error text.
+- Stuck `processing` (crash mid-send) is **not** auto-reclaimed —
+  operator resets to `queued` if needed (safer than silent redelivery).
+- `publicReplies` analytics metric still 0 (no counter column) — 019 may
+  derive from deliveries.
+- Redis/BullMQ still absent — inline poll only.
+
+---
 
 ## Task 017 - Automation Engine
 

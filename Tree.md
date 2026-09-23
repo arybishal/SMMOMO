@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (fetch-failed investigation — no source file changes after Task 017)
+Last updated: 2026-09-23 (Task 018 — BullMQ Delivery / inline delivery worker)
 
 ---
 
@@ -22,11 +22,12 @@ smmomo/
 │   │   ├── tsconfig.json     Strict TS, CommonJS, tsc → dist/ (gitignored)
 │   │   └── src/
 │   │       ├── app.ts        buildApp(): CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads) + registerMetaRoutes + registerWebhookRoutes
+│   │       ├── delivery.ts   Delivery worker (018): inline poll claim queued→processing → Graph send → sent/requeue/failed + automation counters (META_GRAPH_BASE overridable for stub validation only)
 │   │       ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries (inline; no Redis)
 │   │       ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + token upsert + best-effort webhook topic subscribe
 │   │       ├── webhooks.ts   Meta webhooks: GET verify handshake + POST signature-checked comment persist → runCommentEngine (service_role, idempotent)
-│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine path only
-│   │       └── server.ts     Listen on PORT (default 4000)
+│   │       ├── supabase.ts   Cookie session → verify JWT → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery path only
+│   │       └── server.ts     Listen on PORT (default 4000) + startDeliveryWorker (018)
 │   │
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
 │       ├── package.json      Workspace "web": dev/build/start/lint/typecheck
@@ -159,6 +160,7 @@ smmomo/
   + best-effort webhook subscribe. `apps/api/src/webhooks.ts` → Meta verify
   handshake + signed comment ingest → engine (Task 016–017).
   `apps/api/src/engine.ts` → keyword match + delivery enqueue (Task 017).
+  `apps/api/src/delivery.ts` → inline delivery worker claim/send/counters (Task 018).
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`
@@ -172,7 +174,7 @@ smmomo/
 - `apps/web/components/auth-result-bridge.tsx` → Root-layout client bridge:
   when Supabase Site URL lands on `/` with auth result params, forwards to
   `/auth/confirm` so the session is established and the user sees the state.
-- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor).
+- `supabase/migrations/` → SQL migrations (apply via CLI link+push or dashboard SQL Editor): foundation, bootstrap/automation writes, social OAuth columns, webhook events (comments/deliveries), delivery worker (`20260923200000`).
 - `apps/web/lib/mock/` → Centralized mock data shaped like real backend responses.
 - `apps/web/types/index.ts` → Shared frontend domain types (match future API contracts).
 
