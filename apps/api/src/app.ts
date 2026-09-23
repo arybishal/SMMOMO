@@ -10,6 +10,7 @@ import { registerMetaRoutes } from "./meta";
 import { registerWebhookRoutes } from "./webhooks";
 import { registerAdminRoutes } from "./admin";
 import { getWorkspaceUsage, parseUsageRange } from "./usage";
+import { corsAllowlist, missingProductionConfig } from "./origins";
 
 // Keep aligned with apps/api/package.json "version" when bumping.
 const SERVICE = "smmomo-api";
@@ -204,11 +205,41 @@ export async function buildApp() {
     return payload;
   });
 
-  // Credentialed cross-origin from the web app (localhost:3000 → :4000):
-  // a concrete origin + credentials, never `*` with cookies.
+  // Production config gate (Task 022): warn with missing *names* only —
+  // never values. Development keeps localhost defaults (no warning).
+  const missingCfg = missingProductionConfig();
+  if (missingCfg.length > 0) {
+    app.log.warn(
+      { missing: missingCfg },
+      "required configuration missing (names only; set before real traffic)",
+    );
+  }
+
+  // Credentialed cross-origin allowlist (Task 022). Exact string match only —
+  // no prefix/startsWith, no `*`. Missing Origin = server-to-server (Meta
+  // webhook, curl) — request proceeds without CORS headers (browser cannot
+  // read it, which is correct). Unknown Origin → no ACAO (browser blocks).
+  const allowedOrigins = new Set(corsAllowlist());
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+    origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
+      if (!origin) {
+        cb(null, false);
+        return;
+      }
+      cb(null, allowedOrigins.has(origin.replace(/\/$/, "")));
+    },
     credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cookie",
+      "Accept",
+      "Origin",
+      "X-Hub-Signature-256",
+    ],
+    exposedHeaders: [],
+    maxAge: 86400,
   });
 
   // Abuse-sensitive surfaces: webhook ingest (HMAC already gates it — this

@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 021 — Production Readiness)
+Last updated: 2026-09-23 (Task 022 — Production Domain + Multi-Origin)
 
 ---
 
@@ -23,17 +23,19 @@ smmomo/
 │   │   ├── scripts/
 │   │   │   ├── encrypt-ig-tokens.ts  Task 021 one-shot: encrypt existing social_accounts.access_token (idempotent, plaintextLeft check)
 │   │   │   ├── validate-tokens.ts    Task 021 crypto check: roundtrip, malformed/tampered/wrong-key → null, DB all-v1 + decryptable
+│   │   │   ├── validate-config.ts    Task 022 config gate: corsAllowlist + missingProductionConfig (names only, never values)
 │   │   │   ├── validate-usage.mjs  Task 019 validation harness (idempotency, date range, RLS, webhook, route sweep)
-│   │   │   └── validate-security.mjs  Task 020+021 security harness (authz, input, webhook sig, headers, CSP, RLS column probe, member UPDATE token, no stack leak)
+│   │   │   └── validate-security.mjs  Task 020+021+022 security harness (authz, input, webhook sig, headers, CSP, RLS column probe, member UPDATE token, no stack leak, CORS origin allowlist)
 │   │   └── src/
-│       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap) + CORS + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
+│       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap) + CORS allowlist (022 exact Set match, credentials, missing Origin = server-to-server) + production config warn (022 names only) + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
+│       │   ├── origins.ts    Central origin config (022): WEB_ORIGIN, API_ORIGIN, corsAllowlist (CORS_ORIGIN comma-separated exact), resolveRedirectUri, webhookCallbackUrl, missingProductionConfig (prod-only, names only)
 │       │   ├── crypto.ts     AES-256-GCM shared helpers (021): encryptSecret/decryptSecret, v1 envelope, encryptionKey/encryptionReady — platform secrets + IG tokens
 │       │   ├── usage.ts      Usage service (019): recordUsageEvent (service-role, idempotent), usageIdempotencyKey, currentUsagePeriod/parseUsageRange, getWorkspaceUsage (end-user JWT + RLS)
 │       │   ├── admin.ts      Platform-admin routes (018A): GET/PUT /admin/integrations/meta + POST …/test (PLATFORM_ADMIN_EMAILS gate; secrets never in GET)
 │       │   ├── platform-config.ts  Meta config service (018A): AES-256-GCM encrypt + getMetaConfig() DB-first/env-fallback single source for OAuth + webhooks (re-exports encryptionReady from crypto.ts)
 │       │   ├── delivery.ts   Delivery worker (018): inline poll claim queued→processing → Graph send → sent/requeue/failed + resolveAccessToken (decrypt v1 / lazy re-encrypt legacy) + sanitizeGraphError + automation counters + recordUsageEvent on terminal sent/failed only (019)
 │       │   ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries + comment_matched usage (019 winning claim only)
-│       │   ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + service-role token upsert via encryptSecret (021) + best-effort webhook topic subscribe (credentials via getMetaConfig)
+│       │   ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + service-role token upsert via encryptSecret (021) + best-effort webhook topic subscribe (credentials via getMetaConfig; origins via origins.ts 022)
 │       │   ├── webhooks.ts   Meta webhooks: timing-safe GET verify handshake (020) + POST signature-checked comment persist → runCommentEngine → comment_received usage (019 inserted only) (service_role, idempotent; tokens via getMetaConfig)
 │   │       ├── supabase.ts   Cookie session → verify JWT (+email) → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery/platform_settings
 │   │       └── server.ts     Listen on PORT (default 4000) + startDeliveryWorker (018)
@@ -112,7 +114,8 @@ smmomo/
 │       │   │   └── inbox.ts            listRecentComments, listRecentDeliveries
 │       │   ├── supabase/
 │       │   │   ├── client.ts           Browser Supabase client (@supabase/ssr createBrowserClient, publishable key, lazy env check)
-│       │   │   └── server.ts           Server Supabase client (@supabase/ssr createServerClient, async cookies(), session user)
+│       │   │   ├── server.ts           Server Supabase client (@supabase/ssr createServerClient, async cookies(), session user)
+│       │   │   └── cookie-options.ts   Shared session cookie options (022): SameSite=Lax, Secure in prod, optional NEXT_PUBLIC_COOKIE_DOMAIN Domain
 │       │   └── mock/
 │       │       ├── accounts.ts         Instagram account mock
 │       │       ├── posts.ts            Posts/reels mock
@@ -165,12 +168,15 @@ smmomo/
 - `README.md` → General docs: install, run, env vars, architecture, design system.
 - `package.json` (root) → npm workspaces (`apps/*`, `packages/*`) and top-level scripts
   (`dev`/`build` for web, `dev:api`/`build:api` for the API, `lint`, `typecheck` across both).
-- `apps/api/src/app.ts` → Fastify `buildApp()`: CORS (origin `CORS_ORIGIN`, default
-  localhost:3000, credentials) + raw-body application/json parser (HMAC for
+- `apps/api/src/app.ts` → Fastify `buildApp()`: CORS exact-match allowlist (022:
+  `corsAllowlist()` from `origins.ts`, credentials, missing Origin = server-to-server)
+  + raw-body application/json parser (HMAC for
   webhooks) + auth preHandler (session cookie → JWT → ensureWorkspace; skips
   `/health`, Instagram OAuth callback, `/webhooks/*`) + product routes (posts,
   automations CRUD, social-accounts, analytics/usage summaries,
-  comments/deliveries **live table reads**). `apps/api/src/supabase.ts` → cookie
+  comments/deliveries **live table reads**). `apps/api/src/origins.ts` → single
+  source for WEB_ORIGIN/API_ORIGIN/CORS/redirect/webhook URLs (022).
+  `apps/api/src/supabase.ts` → cookie
   parse + user verification + PostgREST helper + bootstrap_workspace RPC +
   `restService()` (service-role, webhook path only).
   `apps/api/src/meta.ts` → Instagram OAuth connect/callback/disconnect (Task 015)
@@ -185,10 +191,11 @@ smmomo/
   (encrypted `platform_settings`, DB-first/env-fallback) + admin-only
   GET/PUT/test routes (Task 018A) — single source for OAuth + webhooks.
   `apps/api/scripts/validate-usage.mjs` → Task 019 validation harness.
-  `apps/api/scripts/validate-security.mjs` → Task 020+021 security harness.
+  `apps/api/scripts/validate-security.mjs` → Task 020+021+022 security harness.
+  `apps/api/scripts/validate-config.ts` → Task 022 production config gate (names only).
   `apps/api/scripts/encrypt-ig-tokens.ts` → Task 021 one-shot IG token encryption (idempotent).
   `apps/api/scripts/validate-tokens.ts` → Task 021 crypto + DB encryption checks.
-  `docs/security.md` → Security model, residual risks, prod requirements, CSP inventory, token storage.
+  `docs/security.md` → Security model, residual risks, prod requirements, CSP inventory, token storage, origin/CORS/cookie model.
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
 - `apps/web/lib/api/client.ts` → The only place UI data flows through; `USE_MOCK=false`

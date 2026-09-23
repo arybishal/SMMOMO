@@ -6,15 +6,31 @@ Status: IN DEVELOPMENT
 
 Current Phase: Production Readiness
 
-Current Task: Task 022 - (TBD — production domain / multi-origin per Task 020 notes)
+Current Task: Task 023 - (TBD — set after Task 022)
 
-Last Completed Task: Task 021 - Production Readiness + Residual Risk Cleanup
+Last Completed Task: Task 022 - Production Domain + Multi-Origin Hardening
 
-Next Task: Task 022 - (TBD)
+Next Task: Task 023 - (TBD)
 
-Last Updated: 2026-09-23 (Task 021)
+Last Updated: 2026-09-23 (Task 022)
 
-Verification: 2026-09-23 Task 021 validation PASSED — typecheck/lint/
+Verification: 2026-09-23 Task 022 validation PASSED — typecheck/lint/
+build:api/build exit 0; `apps/api/src/origins.ts` centralized (WEB_ORIGIN,
+API_ORIGIN, corsAllowlist exact Set match from CORS_ORIGIN comma list,
+resolveRedirectUri, webhookCallbackUrl, missingProductionConfig names-only);
+CORS in app.ts exact match + credentials + missing Origin = server-to-server
+no ACAO; cookie-options.ts shared SameSite=Lax + Secure prod + optional
+NEXT_PUBLIC_COOKIE_DOMAIN Domain; meta.ts/platform-config.ts use origins;
+validate-config.ts gate; validate-security.mjs **34/34 PASS** (25 prior + 9
+CORS: allowed reflect/credentials, unknown/null/suffix no ACAO, missing
+Origin 200 no ACAO, preflight 204 allowed / no ACAO unknown, credentialed
+usage 200); validate-usage.mjs **32/32 PASS** (re-run with non-admin env);
+validate-tokens.ts **14/14 PASS**; validate-config.ts development ok names
+only; route smoke login/register 200 API /posts 401; secret scan 0; npm
+audit 0; .env.local gitignored; Tree.md/TASK.md/README/docs/security.md
+updated; localhost unchanged (allowlist default = WEB_ORIGIN). Task 023 next.
+
+Verification (Task 021): 2026-09-23 Task 021 validation PASSED — typecheck/lint/
 build:api/build exit 0; migration `20260924000000_production_readiness.sql`
 APPLIED via `supabase db push` (revoke member INSERT/UPDATE on
 social_accounts; unique posts(workspace_id,id); composite FK
@@ -246,17 +262,97 @@ than rebuilding from scratch.
 
 # Current Task
 
-## Task 022 - (TBD)
+## Task 022 - Production Domain + Multi-Origin Hardening
 
-Status: NOT STARTED
+Status: COMPLETE (2026-09-23). Roadmap next: Task 023.
 
-### Objective
+### Objective (from spec)
 
-TODO — production domain / multi-origin (or next roadmap item per master prompt).
+Audit and harden origin architecture for production multi-origin: central
+origin config, frontend API base strategy, explicit CORS allowlist, cookie/
+session model for split subdomains, OAuth redirect centralization, webhook
+origin independence, Meta redirect single source, security headers re-test,
+Supabase env audit, `.env.example` classification, localhost still works,
+config validation (names only — no secret values in errors), origin security
+tests, API/admin security checks, delivery/webhook/usage regression, docs,
+full validation, git hygiene, final report. No `example.com` hardcoding;
+no unnecessary proxy layers. Do **not** solve Task 021 residual risks
+(multi-instance rate limit, dual-key rotation, `unsafe-inline`, stuck
+delivery reclaim) unless required — document dependency instead.
 
-### Requirements
+### Decisions
 
-- See master prompt; do not invent scope.
+- **Single source:** `apps/api/src/origins.ts` — `WEB_ORIGIN`, `API_ORIGIN`,
+  `corsAllowlist()` (comma-separated `CORS_ORIGIN`, default `WEB_ORIGIN`,
+  exact `Set` match), `resolveRedirectUri()` (`META_REDIRECT_URI` ??
+  `API_ORIGIN` + callback path), `webhookCallbackUrl()`,
+  `missingProductionConfig()` (prod-only, **names only**).
+- **CORS:** exact match + `credentials: true`; missing Origin =
+  server-to-server (Meta webhook, curl) → request proceeds **without** CORS
+  headers; unknown/null/suffix-spoof → no ACAO (browser blocks). No `*`,
+  no prefix/`startsWith`.
+- **Cookies:** shared `sessionCookieOptions()` in
+  `apps/web/lib/supabase/cookie-options.ts` used by browser client, server
+  client, and `proxy.ts`. `SameSite=Lax` (same-site subdomains need Lax, not
+  None); `Secure` only in production; optional `Domain` via
+  `NEXT_PUBLIC_COOKIE_DOMAIN` for split-subdomain deploys; empty on
+  localhost (host-only cookie spans ports).
+- **Frontend API base:** remains single seam `NEXT_PUBLIC_API_URL` in
+  `apps/web/lib/api/client.ts` only — no scattered fetch URLs.
+- **OAuth redirect:** still env/`origins.ts` only — never admin free text,
+  never request Origin/Host. `platform-config.ts` delegates to
+  `origins.resolveRedirectUri()`.
+- **Webhooks:** unchanged server-to-server (timing-safe verify + HMAC +
+  idempotency) — no browser CORS dependency.
+- **Config gate:** API boot warns when `NODE_ENV=production` and required
+  names missing; `npx tsx apps/api/scripts/validate-config.ts` for CI.
+  Development never crashes on missing prod-only vars.
+- **No migration** for Task 022.
+
+### Files changed
+
+- NEW `apps/api/src/origins.ts` — centralized origins + CORS allowlist +
+  redirect/webhook URLs + production missing-names check.
+- NEW `apps/web/lib/supabase/cookie-options.ts` — shared session cookie
+  options (`SameSite=Lax`, Secure in prod, optional Domain).
+- NEW `apps/api/scripts/validate-config.ts` — names-only config gate.
+- EDIT `apps/api/src/app.ts` — exact-match CORS allowlist + credentials;
+  production missing-config warn (names only).
+- EDIT `apps/api/src/meta.ts` — origins via `origins.ts`.
+- EDIT `apps/api/src/platform-config.ts` — redirect URI via `origins.ts`.
+- EDIT `apps/web/lib/supabase/client.ts`, `server.ts`, `apps/web/proxy.ts`
+  — use `sessionCookieOptions()`.
+- EDIT `apps/api/scripts/validate-security.mjs` — CORS origin tests
+  (allowed reflect + credentials; unknown/null/suffix no ACAO; missing
+  Origin still works; preflight allowed/disallowed; credentialed usage 200).
+- EDIT `.env.example` — CORS comma-list comment, `NEXT_PUBLIC_COOKIE_DOMAIN`.
+- EDIT `README.md` — env table (WEB/API/CORS/cookie domain + 022 note).
+- EDIT `docs/security.md` — Origin architecture + CORS + cookie model +
+  prod requirements 3–4.
+- EDIT `Tree.md` — new files + app.ts/origins descriptions.
+
+### Verification
+
+- typecheck / lint / build:api / build (web) exit 0.
+- `npx tsx apps/api/scripts/validate-config.ts` — development ok (names
+  only, no values printed).
+- `node apps/api/scripts/validate-security.mjs` → **34/34 PASS** (25 prior
+  + 9 CORS origin cases).
+- `node apps/api/scripts/validate-usage.mjs` → **32/32 PASS**.
+- `npx tsx apps/api/scripts/validate-tokens.ts` → **14/14 PASS**.
+- Route smoke: health/login/register 200, /posts 401.
+- Secret scan 0 real secrets; npm audit 0 vulnerabilities.
+- Localhost CORS: browser `http://localhost:3000` → API still works
+  (allowed origin exact match = default allowlist).
+
+### Notes / follow-ups
+
+- Task 021 residual risks remain open (documented in docs/security.md):
+  multi-instance rate-limit store, dual-key rotation window,
+  `script-src 'unsafe-inline'`, stuck `processing` delivery reclaim.
+- Production: set `WEB_ORIGIN`, `API_ORIGIN`, `CORS_ORIGIN`,
+  `NEXT_PUBLIC_API_URL`, optional `NEXT_PUBLIC_COOKIE_DOMAIN` together;
+  run `validate-config.ts` before traffic.
 
 ---
 

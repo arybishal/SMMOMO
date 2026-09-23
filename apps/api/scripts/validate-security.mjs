@@ -4,6 +4,7 @@
 //   TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD (confirmed user)
 //   META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN (webhook handshake)
 // Optional: TEST_NONADMIN_EMAIL, TEST_NONADMIN_PASSWORD
+// Task 022: CORS origin allowlist cases (allowed/unknown/null/suffix/missing/preflight).
 import { createHmac } from "node:crypto";
 import https from "node:https";
 import http from "node:http";
@@ -357,6 +358,100 @@ async function main() {
     "404 no stack leak",
     notFound.status === 404 && !notFound.body.includes("    at "),
     notFound.body.slice(0, 80),
+  );
+
+  // --- CORS origin allowlist (Task 022) ---
+  // Exact match only: allowed reflects + credentials; unknown/null/suffix
+  // spoof get no ACAO; missing Origin (server-to-server) still works.
+  const allowedOrigin = "http://localhost:3000";
+  const corsHealthAllowed = await req(`${API}/health`, {
+    headers: { Origin: allowedOrigin },
+  });
+  ok(
+    "CORS allowed origin reflects ACAO",
+    corsHealthAllowed.headers["access-control-allow-origin"] === allowedOrigin,
+    `acao=${corsHealthAllowed.headers["access-control-allow-origin"]}`,
+  );
+  ok(
+    "CORS credentials true on allowed",
+    corsHealthAllowed.headers["access-control-allow-credentials"] === "true",
+  );
+
+  const corsUnknown = await req(`${API}/health`, {
+    headers: { Origin: "https://evil.example.com" },
+  });
+  ok(
+    "CORS unknown origin no ACAO",
+    !corsUnknown.headers["access-control-allow-origin"],
+    `acao=${corsUnknown.headers["access-control-allow-origin"]}`,
+  );
+
+  const corsNull = await req(`${API}/health`, {
+    headers: { Origin: "null" },
+  });
+  ok(
+    "CORS null origin no ACAO",
+    !corsNull.headers["access-control-allow-origin"],
+    `acao=${corsNull.headers["access-control-allow-origin"]}`,
+  );
+
+  // Suffix/prefix spoof: allowedOrigin + ".evil.com" must not match.
+  const corsSuffix = await req(`${API}/health`, {
+    headers: { Origin: `${allowedOrigin}.evil.com` },
+  });
+  ok(
+    "CORS suffix spoof no ACAO",
+    !corsSuffix.headers["access-control-allow-origin"],
+    `acao=${corsSuffix.headers["access-control-allow-origin"]}`,
+  );
+
+  // Missing Origin: server-to-server request still succeeds (no CORS headers).
+  const corsMissing = await req(`${API}/health`);
+  ok(
+    "CORS missing Origin still 200",
+    corsMissing.status === 200 &&
+      !corsMissing.headers["access-control-allow-origin"],
+  );
+
+  // Credentialed preflight for an allowed browser origin.
+  const preflight = await req(`${API}/posts`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: allowedOrigin,
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "cookie",
+    },
+  });
+  ok(
+    "CORS preflight allowed 200/204",
+    (preflight.status === 200 || preflight.status === 204) &&
+      preflight.headers["access-control-allow-origin"] === allowedOrigin,
+    `status=${preflight.status} acao=${preflight.headers["access-control-allow-origin"]}`,
+  );
+
+  const preflightBad = await req(`${API}/posts`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://evil.example.com",
+      "Access-Control-Request-Method": "GET",
+    },
+  });
+  ok(
+    "CORS preflight unknown no ACAO",
+    !preflightBad.headers["access-control-allow-origin"],
+    `status=${preflightBad.status} acao=${preflightBad.headers["access-control-allow-origin"]}`,
+  );
+
+  // Credentialed authed request from allowed origin must keep working
+  // (regression: CORS change must not break cookie session reads).
+  const corsAuthed = await req(`${API}/usage/summary`, {
+    headers: { Cookie: admin.cookie, Origin: allowedOrigin },
+  });
+  ok(
+    "CORS credentialed usage 200",
+    corsAuthed.status === 200 &&
+      corsAuthed.headers["access-control-allow-origin"] === allowedOrigin,
+    `status=${corsAuthed.status}`,
   );
 
   console.log(`\nRESULT pass=${pass} fail=${fail}`);

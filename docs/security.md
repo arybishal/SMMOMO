@@ -2,9 +2,46 @@
 
 Concise reference for how security works in this repo. **No secrets are documented here.**
 
+## Origin architecture (Task 022)
+
+Single source for every server-side origin string: `apps/api/src/origins.ts`.
+
+| Consumer | Resolution |
+|---|---|
+| Primary frontend origin | `WEB_ORIGIN` (default `http://localhost:3000`) — OAuth post-redirect only |
+| Public API origin | `API_ORIGIN` (default `http://localhost:${PORT\|\|4000}`) — OAuth callback + webhook base |
+| CORS allowlist | `CORS_ORIGIN` comma-separated exact origins; unset → `WEB_ORIGIN` |
+| Instagram OAuth `redirect_uri` | `META_REDIRECT_URI` ?? `API_ORIGIN` + `/social-accounts/instagram/callback` |
+| Meta webhook subscribe callback | `API_ORIGIN` + `/webhooks/instagram` |
+| Frontend API base | `NEXT_PUBLIC_API_URL` (`apps/web/lib/api/client.ts` `API_BASE`) — only web-side origin seam |
+| Supabase URL | `NEXT_PUBLIC_SUPABASE_URL` (client-safe publishable) |
+
+Production never trusts browser `Origin`/`Host` headers for redirects or allowlists. `missingProductionConfig()` runs at API boot (`NODE_ENV=production` only) and logs **missing names only** — never values. `npx tsx apps/api/scripts/validate-config.ts` is the same check for CI/scripts.
+
+### CORS model
+
+- Exact string match (`Set.has`) — no `startsWith`/prefix, no `*`, no `null` origin allowance.
+- `credentials: true` so cookie sessions work cross-origin (frontend origin ≠ API origin).
+- Missing `Origin` (Meta webhook, curl, server-to-server): request proceeds **without** CORS headers — browser cannot read the response (correct); server-to-server is unaffected.
+- Unknown/suffix-spoof origin (`https://evil.example`, `https://localhost:3000.evil.com`): no `Access-Control-Allow-Origin` → browser blocks.
+- Preflight (`OPTIONS`): allowed → 200/204 + ACAO; disallowed → no ACAO.
+- Covered by `apps/api/scripts/validate-security.mjs` (Task 022 CORS block).
+
+### Cookie / session model
+
+| Env | Cookie | Notes |
+|---|---|---|
+| localhost | Host-scoped, no `Domain`, `SameSite=Lax`, no `Secure` | Port-agnostic: `:3000` session is sent to `:4000` |
+| Production, API on same host as web | Same as above + `Secure` | Host-only cookie reaches the reverse-proxied API path |
+| Production, API on different subdomain | `Domain=.example.com` (or shared eTLD+1), `SameSite=Lax`, `Secure` | Set via `NEXT_PUBLIC_COOKIE_DOMAIN` (browser-safe, not a secret) |
+
+- Shared options: `apps/web/lib/supabase/cookie-options.ts` (`sessionCookieOptions()`) used by browser client, server client, and `proxy.ts`.
+- `SameSite=Lax` is intentional: `app.example.com` → `api.example.com` is same-site (same eTLD+1), so Lax cookies ride credentialed fetches. **Do not** switch to `SameSite=None` unless the API moves to a **different registrable domain** (cross-site).
+- `HttpOnly` comes from `@supabase/ssr` defaults. Host-only cookies (no Domain) are never sent to other hosts — no accidental super-cookie in development.
+
 ## Authentication model
 
-- Browser session = Supabase Auth cookie (`sb-<ref>-auth-token`) set by `@supabase/ssr` (`SameSite=Lax`; `Secure` when `NODE_ENV=production`).
+- Browser session = Supabase Auth cookie (`sb-<ref>-auth-token`) set by `@supabase/ssr` (`SameSite=Lax`; `Secure` when `NODE_ENV=production`; optional `Domain` via `NEXT_PUBLIC_COOKIE_DOMAIN`).
 - Fastify `preHandler` (`apps/api/src/app.ts`) resolves the cookie → verifies the JWT with `GET /auth/v1/user` → ensures a workspace via `bootstrap_workspace()` RPC. Failures → 401/500 with generic messages.
 - Route exemptions (intentional): `GET /health`, Instagram OAuth callback (auth inline), `/webhooks/*` (HMAC + service-role gate).
 - Platform admin = env `PLATFORM_ADMIN_EMAILS` checked server-side after session auth (`apps/api/src/admin.ts`). No client-supplied admin flag.
@@ -59,7 +96,7 @@ Each path does its own workspace/validation lookups because RLS is bypassed.
 
 - State = HMAC-SHA256(user.id + expiry) with app secret; callback verifies against current session user + 10-minute TTL.
 - Access tokens exchanged/stored **server-side only**; browser only receives `?oauth=connected|denied|…` flags.
-- `redirect_uri` comes from env/config (not admin-editable free text).
+- `redirect_uri` comes from `origins.ts` / `META_REDIRECT_URI` (not admin-editable free text, never request Origin).
 - Platform Meta App Secret + webhook verify token encrypted at rest (AES-256-GCM, `PLATFORM_ENCRYPTION_KEY`); GET returns configured flags only.
 
 ### IG access tokens at rest (Task 021)
@@ -136,9 +173,10 @@ Adding a third-party script/CDN requires updating `next.config.ts` and this tabl
 
 1. Set `NODE_ENV=production` (enables HSTS + secure cookies).
 2. Strong `SUPABASE_SERVICE_ROLE_KEY`, `PLATFORM_ENCRYPTION_KEY`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` via secret manager — never in repo or web env.
-3. Restrict `CORS_ORIGIN` to the real web origin.
-4. HTTPS only at the edge; HSTS from Next headers.
-5. Confirm Supabase Auth URL/redirect config for the production origin (`/auth/confirm`).
-6. Rotate any credentials that ever lived in test scripts or local shells (including any password that appeared in TASK.md history).
-7. Run `npx tsx apps/api/scripts/encrypt-ig-tokens.ts` once per environment after deploying Task 021 (idempotent); `validate-tokens.ts` must report `plaintextLeft=0`.
-8. If rotating `PLATFORM_ENCRYPTION_KEY`: plan a dual-key decrypt window (not implemented) or re-encrypt while the old key is still available.
+3. Set origin envs together (see Origin architecture): `WEB_ORIGIN`, `API_ORIGIN`, `CORS_ORIGIN` (comma-separated exact origins), `NEXT_PUBLIC_API_URL`; `NEXT_PUBLIC_COOKIE_DOMAIN` when API is a different subdomain.
+4. Run `npx tsx apps/api/scripts/validate-config.ts` — exit 0 and no missing names before traffic.
+5. HTTPS only at the edge; HSTS from Next headers.
+6. Confirm Supabase Auth URL/redirect config for the production origin (`/auth/confirm`).
+7. Rotate any credentials that ever lived in test scripts or local shells (including any password that appeared in TASK.md history).
+8. Run `npx tsx apps/api/scripts/encrypt-ig-tokens.ts` once per environment after deploying Task 021 (idempotent); `validate-tokens.ts` must report `plaintextLeft=0`.
+9. If rotating `PLATFORM_ENCRYPTION_KEY`: plan a dual-key decrypt window (not implemented) or re-encrypt while the old key is still available.

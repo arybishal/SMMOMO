@@ -235,16 +235,19 @@ cp .env.example .env
 
 | Variable | Status | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | Active | Base URL of the Fastify API (default: `http://localhost:4000`) |
+| `NEXT_PUBLIC_API_URL` | Active | Base URL of the Fastify API (default: `http://localhost:4000`) — only web-side API origin seam |
+| `NEXT_PUBLIC_COOKIE_DOMAIN` | Optional (prod split-subdomain) | Session cookie `Domain` when API is a different subdomain (e.g. `.example.com`); leave empty on localhost |
 | `PORT` | Active | Fastify API listen port (default: `4000`) |
-| `CORS_ORIGIN` | Active | Browser origin the API allows (default: `http://localhost:3000`) |
+| `CORS_ORIGIN` | Active | Comma-separated **exact** browser origins the API allows (default: `WEB_ORIGIN`); no prefix match, never `*` |
+| `WEB_ORIGIN` | Active | Primary frontend origin for OAuth post-redirect (default: `http://localhost:3000`) |
+| `API_ORIGIN` | Active | Public API origin for OAuth callback + webhook base (default: `http://localhost:4000`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Active | Supabase project URL (database foundation) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Active | Supabase publishable key — browser-safe by design; never a `service_role`/`sb_secret_` key in the web app |
 | `DATABASE_URL` | Reserved | PostgreSQL connection URI (Supabase provides it if a direct SQL path is needed) |
 | `REDIS_URL` | Reserved | Redis connection URI for queueing |
 | `META_APP_ID` | Active (API env) | Instagram API with Instagram Login app id (Task 015); empty DB field falls back here |
 | `META_APP_SECRET` | Active (API env) | Meta app secret — apps/api only, never the web app; empty DB field falls back here |
-| `META_REDIRECT_URI` | Active (API env) | OAuth callback (default `http://localhost:4000/social-accounts/instagram/callback`) — read-only in Settings → Integrations |
+| `META_REDIRECT_URI` | Active (API env) | OAuth callback (default `API_ORIGIN/social-accounts/instagram/callback`) — read-only in Settings → Integrations |
 | `META_WEBHOOK_VERIFY_TOKEN` | Active (API env) | Webhook verification handshake secret (Task 016); empty DB field falls back here |
 | `PLATFORM_ADMIN_EMAILS` | Active (API env) | Comma-separated emails allowed to read/write Settings → Integrations (Task 018A) |
 | `PLATFORM_ENCRYPTION_KEY` | Active (API env) | AES-256-GCM key (64 hex or base64) for `platform_settings` secrets **and** `social_accounts.access_token` (v1 envelope, Task 018A + 021) |
@@ -252,6 +255,7 @@ cp .env.example .env
 | — | — | Usage events (Task 019): `usage_events` table is the authority for usage/billing metrics; `automations.*_count` remains analytics authority; no plan limits in V1 (`limit`/`remaining` null) |
 | — | — | Security hardening (Task 020): see `docs/security.md` — column-level `social_accounts` reads, timing-safe webhooks, rate limits, security headers, no stack leaks |
 | — | — | Production readiness (Task 021): IG tokens encrypted at rest (`v1.` AES-GCM), full CSP, OAuth rate limit, composite FK, member UPDATE revoked on `social_accounts`; see `docs/security.md` |
+| — | — | Multi-origin (Task 022): origins centralized in `apps/api/src/origins.ts`; CORS exact allowlist + credentials; cookie model (`SameSite=Lax`, optional `Domain`); production config gate `npx tsx apps/api/scripts/validate-config.ts`; see `docs/security.md` → Origin architecture |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a

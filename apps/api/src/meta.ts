@@ -10,12 +10,12 @@ import {
 } from "./supabase";
 import { getMetaConfig, type ResolvedMetaConfig } from "./platform-config";
 import { encryptSecret } from "./crypto";
+import { apiOrigin, webOrigin, webhookCallbackUrl } from "./origins";
 
 // Meta/Instagram OAuth (Task 015). Credentials resolve through
 // getMetaConfig() (Task 018A): platform_settings (encrypted) first, then
 // META_* env. Same single source as webhooks — never a second App Secret.
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:4000";
+// Origins + redirect URI come from apps/api/src/origins.ts (Task 022).
 const CALLBACK_PATH = "/social-accounts/instagram/callback";
 
 // Instagram professional scopes: read profile, comments (webhooks 016),
@@ -64,7 +64,7 @@ function webRedirect(
   params: Record<string, string> = {},
   code = 302,
 ): FastifyReply {
-  const url = new URL(WEB_ORIGIN + path);
+  const url = new URL(webOrigin() + path);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -211,7 +211,7 @@ async function subscribeWebhookTopics(
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           object: "instagram",
-          callback_url: `${API_ORIGIN}/webhooks/instagram`,
+          callback_url: webhookCallbackUrl(),
           verify_token: cfg.webhookVerifyToken,
           access_token: `${cfg.appId}|${cfg.appSecret}`,
           fields: "comments,messages",

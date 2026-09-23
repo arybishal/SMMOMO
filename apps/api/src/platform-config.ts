@@ -1,5 +1,6 @@
 import { restService, type AuthUser } from "./supabase";
 import { decryptSecret, encryptSecret } from "./crypto";
+import { resolveRedirectUri as resolveRedirectUriFromOrigins } from "./origins";
 
 // Platform Meta config (Task 018A). One resolved object is the single source
 // of truth for OAuth (015), webhooks (016), and admin status — never a second
@@ -9,8 +10,9 @@ import { decryptSecret, encryptSecret } from "./crypto";
 
 export { encryptionReady } from "./crypto";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:4000";
-const CALLBACK_PATH = "/social-accounts/instagram/callback";
+// Redirect URI origin comes from origins.ts (Task 022) — env META_REDIRECT_URI
+// or API_ORIGIN + callback path. Never admin-editable free text, never
+// request Origin/Host.
 
 export interface ResolvedMetaConfig {
   appId: string;
@@ -45,10 +47,9 @@ interface PlatformSettingsRow {
 // Precedence (one rule for every consumer): a non-empty DB field wins over
 // env; empty/missing DB field falls back to the matching META_* env var.
 // Redirect URI is deployment config (env only) — not admin-editable.
-export function resolveRedirectUri(): string {
-  return (
-    process.env.META_REDIRECT_URI ?? `${API_ORIGIN}${CALLBACK_PATH}`
-  );
+// Source of truth: apps/api/src/origins.ts resolveRedirectUri (Task 022).
+function resolveRedirectUri(): string {
+  return resolveRedirectUriFromOrigins();
 }
 
 function envAppId(): string {

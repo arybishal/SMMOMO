@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { sessionCookieOptions } from "./cookie-options";
 
 // Server-side Supabase client (server components / route handlers).
 // Cookie-backed session via @supabase/ssr; publishable key only — no
@@ -16,12 +17,9 @@ export async function getServerSupabase() {
   }
   const cookieStore = await cookies();
   return createServerClient(url, key, {
-    // Secure cookies only in production (localhost is http:// — secure
-    // would drop the session cookie in local dev).
-    cookieOptions:
-      process.env.NODE_ENV === "production"
-        ? { secure: true, sameSite: "lax" }
-        : { sameSite: "lax" },
+    // Shared options (Task 022): SameSite=Lax, Secure in prod, optional
+    // Domain for split-subdomain deployments (NEXT_PUBLIC_COOKIE_DOMAIN).
+    cookieOptions: sessionCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();

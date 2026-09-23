@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { sessionCookieOptions } from "./cookie-options";
 
 // Browser-safe Supabase client (cookie sessions via @supabase/ssr).
 // Uses the publishable key only — never a service_role/secret key (those
@@ -13,9 +14,6 @@ export function getBrowserSupabase() {
     );
   }
   return createBrowserClient(url, key, {
-    cookieOptions:
-      process.env.NODE_ENV === "production"
-        ? { secure: true, sameSite: "lax" }
-        : { sameSite: "lax" },
+    cookieOptions: sessionCookieOptions(),
   });
 }

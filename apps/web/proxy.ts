@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { sessionCookieOptions } from "./lib/supabase/cookie-options";
 
 // Next 16: this file convention is `proxy` (middleware was renamed).
 // Guards the app routes with cookie sessions; optimistic check only —
@@ -33,10 +34,7 @@ export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(url, key, {
-    cookieOptions:
-      process.env.NODE_ENV === "production"
-        ? { secure: true, sameSite: "lax" }
-        : { sameSite: "lax" },
+    cookieOptions: sessionCookieOptions(),
     cookies: {
       getAll() {
         return request.cookies.getAll();
