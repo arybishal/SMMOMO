@@ -24,6 +24,19 @@ Supabase env vars present (values not logged). Note: Tasks 001–006
 verified as the requested baseline; Task 007 was already implemented and
 pushed (commit `8185ec4`) before this checkpoint ran — docs match code.
 
+Audit: 2026-09-23 read-only Supabase architecture audit PASSED — schema
+designed in `supabase/migrations/20260923120000_smmomo_foundation.sql`
+(5 tables: workspaces, workspace_members, social_accounts, posts,
+automations; RLS enabled, membership-scoped SELECT-only, no
+`using (true)` anywhere); auth confirmed mock-only (no middleware, no
+`@supabase/ssr`); Posts runtime path is mock (`USE_MOCK=true`) with a
+dormant Supabase branch; builder post selection is UI-only (preventDefault,
+no persistence); remote schema verified still empty (migration intentionally
+unapplied; storage buckets `[]`). Verdict for Task 008: READY — inbox
+frontend on mocks needs no schema change; comments/deliveries tables, write
+policies, and real auth belong to later tasks (013-015+). This audit
+changed no database objects, migrations, or RLS.
+
 ---
 
 ## Important Instructions For The Next AI Agent
