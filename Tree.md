@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-23 (Task 022 — Production Domain + Multi-Origin)
+Last updated: 2026-09-23 (Task 023 — End-to-End Instagram DM Delivery)
 
 ---
 
@@ -25,7 +25,8 @@ smmomo/
 │   │   │   ├── validate-tokens.ts    Task 021 crypto check: roundtrip, malformed/tampered/wrong-key → null, DB all-v1 + decryptable
 │   │   │   ├── validate-config.ts    Task 022 config gate: corsAllowlist + missingProductionConfig (names only, never values)
 │   │   │   ├── validate-usage.mjs  Task 019 validation harness (idempotency, date range, RLS, webhook, route sweep)
-│   │   │   └── validate-security.mjs  Task 020+021+022 security harness (authz, input, webhook sig, headers, CSP, RLS column probe, member UPDATE token, no stack leak, CORS origin allowlist)
+│   │   │   ├── validate-security.mjs  Task 020+021+022 security harness (authz, input, webhook sig, headers, CSP, RLS column probe, member UPDATE token, no stack leak, CORS origin allowlist)
+│   │   │   └── validate-delivery.ts  Task 023 delivery harness: Graph contract (success/401/403/429/4xx/5xx/timeout/refused/malformed), error classification + token redaction, {{first_name}} literal, redirect-uri single source, stuck reclaim + claim race (service-role)
 │   │   └── src/
 │       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap) + CORS allowlist (022 exact Set match, credentials, missing Origin = server-to-server) + production config warn (022 names only) + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes
 │       │   ├── origins.ts    Central origin config (022): WEB_ORIGIN, API_ORIGIN, corsAllowlist (CORS_ORIGIN comma-separated exact), resolveRedirectUri, webhookCallbackUrl, missingProductionConfig (prod-only, names only)
@@ -33,7 +34,8 @@ smmomo/
 │       │   ├── usage.ts      Usage service (019): recordUsageEvent (service-role, idempotent), usageIdempotencyKey, currentUsagePeriod/parseUsageRange, getWorkspaceUsage (end-user JWT + RLS)
 │       │   ├── admin.ts      Platform-admin routes (018A): GET/PUT /admin/integrations/meta + POST …/test (PLATFORM_ADMIN_EMAILS gate; secrets never in GET)
 │       │   ├── platform-config.ts  Meta config service (018A): AES-256-GCM encrypt + getMetaConfig() DB-first/env-fallback single source for OAuth + webhooks (re-exports encryptionReady from crypto.ts)
-│       │   ├── delivery.ts   Delivery worker (018): inline poll claim queued→processing → Graph send → sent/requeue/failed + resolveAccessToken (decrypt v1 / lazy re-encrypt legacy) + sanitizeGraphError + automation counters + recordUsageEvent on terminal sent/failed only (019)
+│       │   ├── delivery.ts   Delivery worker (018/023): inline poll claim queued→processing → Graph send via meta-client → sent/requeue/failed + stuck processing reclaim (failed, no requeue — avoid duplicate DMs) + resolveAccessToken (decrypt v1 / lazy re-encrypt legacy) + automation counters + recordUsageEvent on terminal sent/failed only (019) + needsReconnect on auth/permission errors (023)
+│       │   ├── meta-client.ts  Explicit Meta Graph HTTP boundary (023): sendInstagramDm / sendInstagramCommentReply, injectable fetch, lazy META_GRAPH_BASE, AbortSignal timeout, error class (auth/permission/rate_limit/invalid_request/temporary/network) + safe user messages + token redaction in diagnostics, {{first_name}} literal render
 │       │   ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries + comment_matched usage (019 winning claim only)
 │       │   ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + service-role token upsert via encryptSecret (021) + best-effort webhook topic subscribe (credentials via getMetaConfig; origins via origins.ts 022)
 │       │   ├── webhooks.ts   Meta webhooks: timing-safe GET verify handshake (020) + POST signature-checked comment persist → runCommentEngine → comment_received usage (019 inserted only) (service_role, idempotent; tokens via getMetaConfig)

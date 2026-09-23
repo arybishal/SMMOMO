@@ -675,7 +675,7 @@ export async function buildApp() {
     comment_id: string | null;
     recipient: string;
     kind: "private_dm" | "public_reply";
-    status: "queued" | "sent" | "delivered" | "failed";
+    status: "queued" | "processing" | "sent" | "delivered" | "failed";
     error: string | null;
     created_at: string;
   }

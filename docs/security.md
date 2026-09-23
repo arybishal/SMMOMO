@@ -106,7 +106,16 @@ Each path does its own workspace/validation lookups because RLS is bypassed.
 - Reads: only `delivery.ts` resolves tokens (`resolveAccessToken`). Prefixed `v1.` → decrypt (auth tag verified; tamper/wrong key → null). Legacy plaintext rows are used once and re-encrypted in place (one-way migration toward ciphertext).
 - Members: no INSERT/UPDATE on `social_accounts` (migration `20260924000000`); column SELECT already hides token columns (migration `20260923230000`). DELETE (disconnect) remains.
 - Migration + verification: `apps/api/scripts/encrypt-ig-tokens.ts` (idempotent, `plaintextLeft` must be 0), `apps/api/scripts/validate-tokens.ts` (roundtrip + malformed/tampered/wrong-key → null + DB all-`v1.` probe).
-- Graph error text is sanitized (`sanitizeGraphError`) before persist so Bearer tokens never land in `deliveries.error`.
+- Graph error text is sanitized before persist so Bearer tokens never land in `deliveries.error` (`meta-client.ts` safe user messages; raw Graph body only in server logs, token-redacted).
+
+### Delivery Graph boundary + error policy (Task 023)
+
+- All outbound Instagram sends leave through `apps/api/src/meta-client.ts` (injectable fetch for tests; lazy `META_GRAPH_BASE`; `AbortSignal.timeout` via `META_GRAPH_TIMEOUT_MS`, default 15s).
+- Error classes: `auth` (401), `permission` (403), `rate_limit` (429), `invalid_request` (4xx), `temporary` (5xx), `network` (fetch failed).
+- Persisted `deliveries.error` is a **safe** user-facing string only — never raw Graph bodies or tokens. `auth`/`permission` also set `social_accounts.status='error'` (reconnect, never auto-disconnect).
+- Retry: only `rate_limit` / `temporary` / connection-refused (`ECONNREFUSED`/`ENOTFOUND`) requeue while `attempts < DELIVERY_MAX_ATTEMPTS`. Timeout/abort after connect is **ambiguous** → not retried (duplicate-DM risk). Stuck `processing` past `DELIVERY_STUCK_MS` → permanent `failed` (cannot prove Meta did not receive) — same duplicate-DM tradeoff, documented.
+- `{{first_name}}` in templates is left literal (webhook has username only; personalization deferred — never invent follower names).
+- OAuth `redirect_uri` remains single-source (`origins.ts` → `resolveRedirectUri`); harness asserts it.
 
 ## Usage-event security
 

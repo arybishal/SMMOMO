@@ -6,20 +6,33 @@ import {
   encryptSecret,
   isEncryptedSecret,
 } from "./crypto";
+import {
+  renderDeliveryMessage,
+  sendInstagramCommentReply,
+  sendInstagramDm,
+  type GraphSendResult,
+} from "./meta-client";
 
-// Task 018: outbound delivery worker. No Redis/BullMQ in this environment
-// (same gap as 017) — honest inline poll on the API process. Claim → Graph
-// send → finalize. Claim is status=queued → processing (migration
-// 20260923200000) so redelivery/crash cannot double-send.
+// Task 018/023: outbound delivery worker. No Redis/BullMQ in this environment
+// — honest inline poll on the API process (same documented gap as 017).
+// Claim → Graph send (via meta-client boundary) → finalize.
 //
-// Graph base is env-overridable for validation only (local stub returns
-// 200 without Meta messaging perms). Production default is the real Graph
-// host — never fakes success in the default path.
+// State machine (migration 20260923200000):
+//   queued → processing → sent | failed
+//   processing (stuck past DELIVERY_STUCK_MS) → failed  (Task 023 reclaim)
+//
+// Ambiguity policy (Task 023): a stuck `processing` row means the process
+// died/hung after claim (attempts already bumped). We cannot know whether
+// Meta received the request — reclaim marks **failed** (no requeue) so a
+// possible partial send is never duplicated. Retryable Graph failures requeue
+// only via the explicit retry path below (status → queued while still owned).
 
-const GRAPH_BASE = process.env.META_GRAPH_BASE ?? "https://graph.instagram.com";
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = Number(process.env.DELIVERY_MAX_ATTEMPTS ?? 3);
 const POLL_MS = Number(process.env.DELIVERY_POLL_MS ?? 5000);
 const BATCH = Number(process.env.DELIVERY_BATCH ?? 10);
+// Must exceed META_GRAPH_TIMEOUT_MS (default 15s) + worker overhead so a
+// live send is never reclaimed mid-request in a single process.
+const STUCK_MS = Number(process.env.DELIVERY_STUCK_MS ?? 120_000);
 
 interface QueuedDelivery {
   id: string;
@@ -51,24 +64,12 @@ interface SocialWork {
   status: string;
 }
 
-type SendOutcome =
-  | { ok: true }
-  | { ok: false; error: string; retryable: boolean };
-
-// Meta error bodies must never surface tokens (Authorization never logged;
-// still strip token-shaped substrings from Graph text before persisting).
-function sanitizeGraphError(text: string): string {
-  return text
-    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/\bIGQV[A-Za-z0-9._-]+/g, "[redacted]")
-    .slice(0, 200);
-}
-
 /**
  * Resolve the stored access token for a Graph send.
  * Encrypted (`v1.…`) → decrypt (auth tag verified; tamper → null).
  * Legacy plaintext (pre-021) → use once and re-encrypt in place so the
  * compatibility path only ever moves toward ciphertext, never away from it.
+ * New OAuth writes are always encrypted (meta.ts) — no new plaintext rows.
  */
 async function resolveAccessToken(
   workspaceId: string,
@@ -77,8 +78,6 @@ async function resolveAccessToken(
   if (isEncryptedSecret(stored)) {
     return decryptSecret(stored);
   }
-  // Legacy row: encrypt in place (best-effort), then return plaintext for
-  // this send. New OAuth writes are always encrypted at rest (meta.ts).
   if (!stored) return null;
   try {
     const enc = encryptSecret(stored);
@@ -87,80 +86,18 @@ async function resolveAccessToken(
       { method: "PATCH", prefer: "return=minimal", body: { access_token: enc } },
     );
   } catch {
-    // Missing PLATFORM_ENCRYPTION_KEY — still deliver with plaintext once;
-    // migration script + restart with key will finish the conversion.
+    // Missing PLATFORM_ENCRYPTION_KEY — deliver with plaintext once; migration
+    // script + restart with key finishes conversion. Never writes new plaintext.
   }
   return stored;
 }
 
-async function sendPrivateDm(
-  token: string,
-  igUserId: string,
-  recipient: string,
-  message: string,
-): Promise<SendOutcome> {
-  // Instagram Messaging API (IG Login token). Recipient is the commenter
-  // username from the webhook — Graph may require a recipient id depending
-  // on app mode; non-2xx is captured as failed with Meta's error text.
-  try {
-    const res = await fetch(`${GRAPH_BASE}/${encodeURIComponent(igUserId)}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        recipient: { username: recipient },
-        message,
-      }),
-    });
-    if (res.ok) return { ok: true };
-    const text = await res.text().catch(() => "");
-    return {
-      ok: false,
-      error: `graph_dm_${res.status}: ${sanitizeGraphError(text)}`,
-      retryable: res.status >= 500 || res.status === 429,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      error: `graph_dm_network: ${(err as Error).message.slice(0, 200)}`,
-      retryable: true,
-    };
-  }
-}
-
-async function sendPublicReply(
-  token: string,
-  igCommentId: string,
-  message: string,
-): Promise<SendOutcome> {
-  try {
-    const res = await fetch(
-      `${GRAPH_BASE}/${encodeURIComponent(igCommentId)}/replies`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message }),
-      },
-    );
-    if (res.ok) return { ok: true };
-    const text = await res.text().catch(() => "");
-    return {
-      ok: false,
-      error: `graph_reply_${res.status}: ${sanitizeGraphError(text)}`,
-      retryable: res.status >= 500 || res.status === 429,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      error: `graph_reply_network: ${(err as Error).message.slice(0, 200)}`,
-      retryable: true,
-    };
-  }
+/** Surface reconnect need on the account row — never auto-disconnect. */
+async function markAccountNeedsReconnect(workspaceId: string): Promise<void> {
+  await restService(
+    `social_accounts?workspace_id=eq.${encodeURIComponent(workspaceId)}&platform=eq.instagram`,
+    { method: "PATCH", prefer: "return=minimal", body: { status: "error" } },
+  );
 }
 
 // Claim: only one caller moves queued → processing for this row.
@@ -183,15 +120,26 @@ async function claimDelivery(id: string, attempts: number): Promise<boolean> {
   return Boolean(res.data?.length);
 }
 
+/**
+ * Finalize only while still `processing` (ownership guard). If a reclaim or
+ * another worker already moved the row, return false and skip side effects
+ * (usage / counters) so we never double-count a lost race.
+ */
 async function finalize(
   id: string,
   status: "sent" | "failed" | "queued",
   error: string | null,
-): Promise<void> {
-  await restService(`deliveries?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: { status, error },
-  });
+): Promise<boolean> {
+  const res = await restService<ClaimRow[]>(
+    `deliveries?id=eq.${encodeURIComponent(id)}&status=eq.processing`,
+    {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: { status, error },
+    },
+  );
+  if (res.status >= 400) return false;
+  return Boolean(res.data?.length);
 }
 
 // Usage only on terminal outcomes (sent | permanent failed) — requeue retries
@@ -242,10 +190,9 @@ async function processOne(
   row: QueuedDelivery & { attempts?: number },
   log: FastifyBaseLogger,
 ): Promise<void> {
-  const attempts = Number(row.attempts ?? 0) + 1;
-  // attempt number is written by claimDelivery (queued → processing).
+  // attempts already bumped by claimDelivery — use as-is (do not +1 again).
+  const attempts = Number(row.attempts ?? 0);
 
-  // Load comment (ig_comment_id + automation join) when needed.
   let comment: CommentWork | null = null;
   if (row.comment_id) {
     const c = await restService<CommentWork[]>(
@@ -276,6 +223,9 @@ async function processOne(
       row.kind === "private_dm" ? auto.private_reply : (auto.public_reply ?? "");
   }
 
+  // {{first_name}} stays literal — webhook has username only (meta-client docs).
+  message = renderDeliveryMessage(message);
+
   if (!message.trim()) {
     await finalize(row.id, "failed", "empty_message");
     if (automationId) await bumpAutomation(automationId, "failed_count");
@@ -297,68 +247,146 @@ async function processOne(
     return;
   }
 
-  let outcome: SendOutcome;
+  let outcome: GraphSendResult;
   if (row.kind === "private_dm") {
-    outcome = await sendPrivateDm(
-      accessToken,
-      account.ig_user_id,
-      row.recipient,
+    outcome = await sendInstagramDm({
+      token: accessToken,
+      igUserId: account.ig_user_id,
+      recipient: row.recipient,
       message,
-    );
+    });
   } else {
     if (!comment?.ig_comment_id) {
       await finalize(row.id, "failed", "missing_ig_comment_id");
       if (automationId) await bumpAutomation(automationId, "failed_count");
       return;
     }
-    outcome = await sendPublicReply(
-      accessToken,
-      comment.ig_comment_id,
+    outcome = await sendInstagramCommentReply({
+      token: accessToken,
+      igCommentId: comment.ig_comment_id,
       message,
-    );
+    });
   }
 
   if (outcome.ok) {
-    await finalize(row.id, "sent", null);
+    const owned = await finalize(row.id, "sent", null);
+    if (!owned) {
+      log.warn({ deliveryId: row.id }, "delivery: lost ownership before sent finalize");
+      return;
+    }
     await recordDeliveryUsage(row, "sent", log);
     if (automationId && row.kind === "private_dm") {
       await bumpAutomation(automationId, "dm_sent_count");
     }
+    // Successful send clears a prior error-state account flag only via OAuth
+    // reconnect — do not auto-set connected here.
     log.info({ deliveryId: row.id, kind: row.kind }, "delivery sent");
     return;
   }
 
-  // Retryable + attempts left → requeue (still no double-claim: next claim
-  // only succeeds from status=queued). Otherwise permanent failed.
+  // Persist safe message only; diagnostic stays in server logs.
+  const safeError = outcome.safeMessage ?? "Instagram delivery failed.";
+  if (outcome.needsReconnect) {
+    await markAccountNeedsReconnect(row.workspace_id);
+  }
+  log.warn(
+    {
+      deliveryId: row.id,
+      attempts,
+      errorClass: outcome.errorClass,
+      httpStatus: outcome.httpStatus,
+      diagnostic: outcome.diagnostic,
+    },
+    "delivery graph error",
+  );
+
   if (outcome.retryable && attempts < MAX_ATTEMPTS) {
-    await finalize(row.id, "queued", outcome.error);
-    log.warn(
-      { deliveryId: row.id, attempts, error: outcome.error },
-      "delivery retry scheduled",
-    );
+    const owned = await finalize(row.id, "queued", safeError);
+    if (owned) {
+      log.warn(
+        { deliveryId: row.id, attempts, errorClass: outcome.errorClass },
+        "delivery retry scheduled",
+      );
+      return;
+    }
+    // Lost ownership mid-retry — do not leave processing.
     return;
   }
 
-  await finalize(row.id, "failed", outcome.error);
+  const owned = await finalize(row.id, "failed", safeError);
+  if (!owned) return;
   await recordDeliveryUsage(row, "failed", log);
   if (automationId) await bumpAutomation(automationId, "failed_count");
   log.error(
-    { deliveryId: row.id, attempts, error: outcome.error },
+    { deliveryId: row.id, attempts, errorClass: outcome.errorClass },
     "delivery failed",
   );
+}
+
+/**
+ * Task 023: reclaim rows stuck in `processing` (crash/hang after claim).
+ * Cannot prove Meta did not receive the send → permanent failed (no requeue).
+ * Atomic guard: still processing + claimed_at older than STUCK_MS.
+ */
+export async function reclaimStuckDeliveries(
+  log: FastifyBaseLogger,
+): Promise<number> {
+  if (!serviceEnabled()) return 0;
+  const cutoff = new Date(Date.now() - STUCK_MS).toISOString();
+  const stuck = await restService<
+    (QueuedDelivery & { attempts: number })[]
+  >(
+    `deliveries?status=eq.processing&claimed_at=lt.${encodeURIComponent(cutoff)}` +
+      `&select=id,workspace_id,comment_id,recipient,kind,attempts&limit=${BATCH}`,
+  );
+  if (stuck.status >= 400 || !stuck.data?.length) return 0;
+
+  let reclaimed = 0;
+  for (const row of stuck.data) {
+    const res = await restService<ClaimRow[]>(
+      `deliveries?id=eq.${encodeURIComponent(row.id)}` +
+        `&status=eq.processing&claimed_at=lt.${encodeURIComponent(cutoff)}`,
+      {
+        method: "PATCH",
+        prefer: "return=representation",
+        body: {
+          status: "failed",
+          error: "Delivery interrupted. Not retried to avoid duplicate messages.",
+        },
+      },
+    );
+    if (res.status < 400 && res.data?.length) {
+      reclaimed += 1;
+      await recordDeliveryUsage(row, "failed", log);
+      if (row.comment_id) {
+        const c = await restService<{ automation_id: string | null }[]>(
+          `comments?id=eq.${encodeURIComponent(row.comment_id)}&select=automation_id&limit=1`,
+        );
+        const automationId = c.data?.[0]?.automation_id;
+        if (automationId) await bumpAutomation(automationId, "failed_count");
+      }
+      log.warn(
+        { deliveryId: row.id, attempts: row.attempts },
+        "delivery: stuck processing reclaimed → failed",
+      );
+    }
+  }
+  return reclaimed;
 }
 
 /** One poll cycle — exported for validation scripts (no interval). */
 export async function processQueuedDeliveries(
   log: FastifyBaseLogger,
-): Promise<{ claimed: number; done: number }> {
-  if (!serviceEnabled()) return { claimed: 0, done: 0 };
+): Promise<{ claimed: number; done: number; reclaimed: number }> {
+  if (!serviceEnabled()) return { claimed: 0, done: 0, reclaimed: 0 };
+
+  const reclaimed = await reclaimStuckDeliveries(log);
 
   const batch = await restService<(QueuedDelivery & { attempts?: number })[]>(
     `deliveries?status=eq.queued&order=created_at.asc&limit=${BATCH}&select=id,workspace_id,comment_id,recipient,kind,attempts`,
   );
   if (batch.status >= 400 || !batch.data?.length) {
-    return { claimed: 0, done: 0 };
+    return { claimed: 0, done: 0, reclaimed };
   }
 
   let claimed = 0;
@@ -366,18 +394,16 @@ export async function processQueuedDeliveries(
   for (const row of batch.data) {
     const nextAttempt = Number(row.attempts ?? 0) + 1;
     const ok = await claimDelivery(row.id, nextAttempt);
-    if (!ok) continue; // lost the claim race — another worker owns it
+    if (!ok) continue;
     claimed += 1;
     try {
       await processOne({ ...row, attempts: nextAttempt }, log);
       done += 1;
     } catch (err) {
-      // Unexpected throw after claim: leave processing + log (no silent
-      // requeue that could double-send after a partial Graph success).
       log.error({ err, deliveryId: row.id }, "delivery worker crashed mid-job");
     }
   }
-  return { claimed, done };
+  return { claimed, done, reclaimed };
 }
 
 /** Start the inline poller on the API process (Task 018). */
@@ -393,6 +419,14 @@ export function startDeliveryWorker(log: FastifyBaseLogger): NodeJS.Timeout {
       });
   }, POLL_MS);
   timer.unref?.();
-  log.info({ pollMs: POLL_MS, batch: BATCH, graph: GRAPH_BASE }, "delivery worker started");
+  log.info(
+    {
+      pollMs: POLL_MS,
+      batch: BATCH,
+      maxAttempts: MAX_ATTEMPTS,
+      stuckMs: STUCK_MS,
+    },
+    "delivery worker started",
+  );
   return timer;
 }

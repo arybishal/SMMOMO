@@ -12,12 +12,14 @@ import type { Automation, MessageDelivery, Post } from "@/types";
 const deliveryTone = {
   delivered: "success",
   sent: "info",
+  processing: "info",
   queued: "draft",
   failed: "failed",
 } as const;
 
 const deliveryLabel: Record<MessageDelivery["status"], string> = {
   queued: "Queued",
+  processing: "Processing",
   sent: "Sent",
   delivered: "Delivered",
   failed: "Failed",
@@ -25,6 +27,7 @@ const deliveryLabel: Record<MessageDelivery["status"], string> = {
 
 const deliveryStatuses: MessageDelivery["status"][] = [
   "queued",
+  "processing",
   "sent",
   "delivered",
   "failed",
@@ -100,9 +103,10 @@ export default async function AnalyticsPage() {
     chartSummary = parts.join(" ");
   }
 
-  // --- Delivery breakdown (event records; queued is never "successful") ---
+  // --- Delivery breakdown (event records; queued/processing never "successful") ---
   const counts: Record<MessageDelivery["status"], number> = {
     queued: 0,
+    processing: 0,
     sent: 0,
     delivered: 0,
     failed: 0,

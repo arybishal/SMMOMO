@@ -3,7 +3,12 @@
 
 export type InstagramMediaType = "IMAGE" | "REEL" | "CAROUSEL";
 export type AutomationStatus = "active" | "paused" | "draft";
-export type DeliveryStatus = "queued" | "sent" | "delivered" | "failed";
+export type DeliveryStatus =
+  | "queued"
+  | "processing"
+  | "sent"
+  | "delivered"
+  | "failed";
 
 export interface SocialAccount {
   id: string;

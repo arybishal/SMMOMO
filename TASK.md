@@ -6,15 +6,36 @@ Status: IN DEVELOPMENT
 
 Current Phase: Production Readiness
 
-Current Task: Task 023 - (TBD — set after Task 022)
+Current Task: Task 023 - End-to-End Instagram DM Delivery
 
-Last Completed Task: Task 022 - Production Domain + Multi-Origin Hardening
+Last Completed Task: Task 023 - End-to-End Instagram DM Delivery
 
-Next Task: Task 023 - (TBD)
+Next Task: Task 024 - (TBD — set after Task 023)
 
-Last Updated: 2026-09-23 (Task 022)
+Last Updated: 2026-09-23 (Task 023)
 
-Verification: 2026-09-23 Task 022 validation PASSED — typecheck/lint/
+Verification: 2026-09-23 Task 023 validation PASSED — typecheck/lint/
+build:api/build exit 0; `apps/api/src/meta-client.ts` Graph boundary
+(injectable fetch, lazy META_GRAPH_BASE, AbortSignal timeout, error class
+auth/permission/rate_limit/invalid_request/temporary/network + safe user
+messages + token-redacted diagnostics); delivery.ts claim → meta-client →
+finalize with ownership guard; stuck `processing` reclaim → failed (no
+requeue, avoid duplicate DMs); auth/permission → social_accounts.status=
+error (reconnect, never disconnect); retry only rate_limit/5xx/
+ECONNREFUSED while attempts < max; timeout ambiguous not retried;
+{{first_name}} literal; frontend DeliveryStatus gains `processing`
+(types + inbox/dashboard/analytics maps + analytics counts);
+validate-delivery.ts **45/45 PASS** (Graph contract 200/401/403/429/400/
+500/502 malformed, ECONNREFUSED retryable, timeout not retryable, token
+never in safe message/diagnostic, {{first_name}}, redirect-uri single
+source, stuck reclaim → failed, fresh processing kept, claim race empty);
+validate-security **32/32**; validate-usage **32/32**; validate-tokens
+**14/14**; validate-config ok; secret scan 0; npm audit 0; Tree.md/
+TASK.md/README/docs/security.md/.env.example updated. LIVE Meta send NOT
+proven (no IG messaging app in this env) — contract proven via injected
+fetch. Task 024 next.
+
+Verification (Task 022): 2026-09-23 Task 022 validation PASSED — typecheck/lint/
 build:api/build exit 0; `apps/api/src/origins.ts` centralized (WEB_ORIGIN,
 API_ORIGIN, corsAllowlist exact Set match from CORS_ORIGIN comma list,
 resolveRedirectUri, webhookCallbackUrl, missingProductionConfig names-only);
@@ -249,9 +270,10 @@ blocking anon); see the Task 012 record below.
 | 018 | BullMQ Delivery | COMPLETE |
 | 018A | Secure Admin Meta Configuration | COMPLETE |
 | 019 | Usage Tracking | COMPLETE |
-| 020 | Security Hardening | NOT STARTED |
-| 021 | Testing | NOT STARTED |
-| 022 | Production Preparation | NOT STARTED |
+| 020 | Security Hardening | COMPLETE |
+| 021 | Production Readiness + Residual Risk Cleanup | COMPLETE |
+| 022 | Production Domain + Multi-Origin Hardening | COMPLETE |
+| 023 | End-to-End Instagram DM Delivery | COMPLETE |
 
 Note on 004–010: Task 002 delivered working placeholder versions of every route
 (designed, data-driven, not empty). Tasks 004–010 should treat their pages as
@@ -261,6 +283,117 @@ than rebuilding from scratch.
 ---
 
 # Current Task
+
+## Task 023 - End-to-End Instagram DM Delivery
+
+Status: COMPLETE (2026-09-23). Roadmap next: Task 024.
+
+### Objective (from spec)
+
+Ship the full comment → match → private DM / public reply path with a real
+Graph client boundary: delivery state machine (`queued/processing/sent/
+delivered/failed`), idempotent claim, stuck-processing reclaim, Meta API
+error classification + safe messages, account reconnect signal, retry
+policy with duplicate-DM tradeoff, usage on terminal outcomes only,
+template var policy (`{{first_name}}`), inbox/analytics display of
+`processing`, OAuth redirect single source, automated delivery harness
+(unit Graph contract + optional service-role integration), full validation,
+git hygiene, docs, final report.
+
+### Decisions
+
+- **Graph boundary:** new `apps/api/src/meta-client.ts` — only place that
+  calls Meta Messaging/Comment Reply. Injected `fetch` for tests; lazy
+  `META_GRAPH_BASE` (read at call time); `AbortSignal.timeout`
+  (`META_GRAPH_TIMEOUT_MS` default 15s). `delivery.ts` imports send helpers.
+- **Error classes:** 401 `auth`, 403 `permission`, 429 `rate_limit`,
+  4xx `invalid_request`, 5xx `temporary`, fetch fail `network`. Persisted
+  `deliveries.error` is a fixed safe string only (never raw Graph body or
+  token); diagnostics stay in server logs with Bearer/IGQV/EAA redacted.
+- **Account health:** `auth`/`permission` → PATCH
+  `social_accounts.status='error'` (reconnect UI). Never auto-disconnect.
+- **Retry / ambiguity:** requeue only for `rate_limit` / `temporary` /
+  connection-refused (`ECONNREFUSED`/`ENOTFOUND` — never left the host)
+  while `attempts < DELIVERY_MAX_ATTEMPTS`. Timeout/abort after connect is
+  ambiguous → fail (duplicate-DM risk over silent double-send).
+- **Stuck reclaim:** `processing` + `claimed_at` older than
+  `DELIVERY_STUCK_MS` (default 120s > Graph timeout) → permanent `failed`
+  with “not retried to avoid duplicate messages”. Atomic guard (still
+  processing + old claim). Fresh processing rows untouched. Ownership
+  finalize (`status=eq.processing`) so lost races skip usage.
+- **Usage:** terminal `sent`/`failed` only (requeue is intermediate);
+  idempotent `delivery:{uuid}` — `private_dm_sent` never on failure.
+- **Template:** `renderDeliveryMessage` leaves `{{first_name}}` literal —
+  webhook payload has username only; personalization deferred (never
+  invent follower names).
+- **Frontend:** `DeliveryStatus` gains `processing`; label/tone maps +
+  analytics counts updated (inbox, dashboard, analytics).
+- **Redirect URI §25:** still single source `origins.resolveRedirectUri()`
+  (`META_REDIRECT_URI ?? API_ORIGIN + /social-accounts/instagram/callback`);
+  platform-config delegates; admin SaveMetaConfig has no redirect field.
+  Harness asserts stability + path.
+- **No new migration** — statuses/`attempts`/`claimed_at` already exist
+  (018). Processing partial index skipped (small table; add if reclaim scan
+  ever shows up in EXPLAIN).
+- **No Redis/BullMQ** — same honest inline poll as 018.
+
+### Files
+
+- NEW `apps/api/src/meta-client.ts`
+- NEW `apps/api/scripts/validate-delivery.ts` (45 checks)
+- EDIT `apps/api/src/delivery.ts` — use meta-client; reclaim; ownership
+  finalize; needsReconnect; safe error strings; template hook
+- EDIT `apps/api/src/app.ts` — DeliveryRow status includes `processing`
+- EDIT `apps/web/types/index.ts` — DeliveryStatus `processing`
+- EDIT `apps/web/app/(dashboard)/inbox/inbox.tsx`,
+  `dashboard/page.tsx`, `analytics/page.tsx` — processing label/tone/counts
+- EDIT `.env.example`, `Tree.md`, `README.md`, `docs/security.md`, `TASK.md`
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`, `npm run build` — all exit 0.
+- `npx tsx apps/api/scripts/validate-delivery.ts` → **45/45 PASS**
+  (classification table; DM/reply 200; 401/403 needsReconnect + no token in
+  safe/diagnostic; 429/500 retryable; 400 not; ECONNREFUSED retryable;
+  timeout not retryable; malformed 502 temporary; `{{first_name}}`;
+  resolveRedirectUri; stuck reclaim → failed + message; fresh kept; claim race empty).
+- `validate-security.mjs` **32/32 PASS**; `validate-usage.mjs` **32/32 PASS**;
+  `validate-tokens.ts` **14/14 PASS**; `validate-config.ts` development ok.
+- API boot log: `delivery worker started` with `stuckMs=120000`.
+- Secret scan 0; npm audit 0.
+
+### Known limitations / honest notes
+
+- **LIVE META VERIFICATION NOT COMPLETED** — no Instagram messaging app /
+  permissions in this environment. Graph contract proven via injected
+  fetch boundary; default host remains real Graph (never fakes 200).
+- Recipient is commenter **username** (webhook source); if Meta requires
+  numeric recipient id, non-2xx → classified + safe failed.
+- Stuck reclaim always fails (no requeue) — crash-before-Graph is also
+  failed; operator can re-trigger. Documented duplicate-DM tradeoff.
+- `{{first_name}}` sends the literal token until a verified name field
+  exists on the comment/webhook row.
+- Redis/BullMQ still absent — inline poll only.
+- Task 023 delivery harness uses service-role for DB probes (same pattern
+  as validate-tokens); skips cleanly without the key.
+
+### Final report fields (§32)
+
+- **Delivery state machine:** `queued → processing → sent | failed`;
+  retryable Graph errors requeue to `queued`; stuck processing → `failed`.
+- **Claim:** PATCH `status=eq.queued` + representation (empty = lost race);
+  attempts bumped on claim; finalize only while `processing`.
+- **Reclaim:** `processing` older than `DELIVERY_STUCK_MS` → `failed`
+  (atomic, no requeue).
+- **Meta errors:** class + safe message + reconnect flag; retry policy as above.
+- **Usage:** terminal outcomes only; idempotent delivery key.
+- **Template:** `{{first_name}}` literal, deferred.
+- **UI:** `processing` status labeled/tone-mapped on inbox/dashboard/analytics.
+- **Redirect URI:** single source origins.ts, harness-verified.
+- **Tests:** validate-delivery 45/45; baselines green; LIVE Meta not done.
+- **Git:** commit + push `origin/main` without asking (standing directive).
+
+---
 
 ## Task 022 - Production Domain + Multi-Origin Hardening
 

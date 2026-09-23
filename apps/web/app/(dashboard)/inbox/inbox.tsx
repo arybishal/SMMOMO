@@ -27,12 +27,14 @@ const outcomeFilters: { value: OutcomeFilter; label: string }[] = [
 const deliveryTone = {
   delivered: "success",
   sent: "info",
+  processing: "info",
   queued: "draft",
   failed: "failed",
 } as const;
 
 const deliveryLabel: Record<MessageDelivery["status"], string> = {
   queued: "Queued",
+  processing: "Processing",
   sent: "Sent",
   delivered: "Delivered",
   failed: "Failed",
@@ -66,6 +68,8 @@ function commentOutcome(c: CommentEvent, deliveries: MessageDelivery[]) {
     };
   if (dm?.status === "queued")
     return { tone: "draft" as const, label: "Queued", filterKey: null };
+  if (dm?.status === "processing")
+    return { tone: "info" as const, label: "Processing", filterKey: null };
   return { tone: "info" as const, label: "Matched", filterKey: null };
 }
 

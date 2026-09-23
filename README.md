@@ -256,6 +256,9 @@ cp .env.example .env
 | — | — | Security hardening (Task 020): see `docs/security.md` — column-level `social_accounts` reads, timing-safe webhooks, rate limits, security headers, no stack leaks |
 | — | — | Production readiness (Task 021): IG tokens encrypted at rest (`v1.` AES-GCM), full CSP, OAuth rate limit, composite FK, member UPDATE revoked on `social_accounts`; see `docs/security.md` |
 | — | — | Multi-origin (Task 022): origins centralized in `apps/api/src/origins.ts`; CORS exact allowlist + credentials; cookie model (`SameSite=Lax`, optional `Domain`); production config gate `npx tsx apps/api/scripts/validate-config.ts`; see `docs/security.md` → Origin architecture |
+| `DELIVERY_POLL_MS` / `DELIVERY_BATCH` / `DELIVERY_MAX_ATTEMPTS` / `DELIVERY_STUCK_MS` | Optional (API env) | Inline delivery worker knobs (Tasks 018/023); stuck `processing` older than `STUCK_MS` reclaims to `failed` (never requeue — avoid duplicate DMs) |
+| `META_GRAPH_BASE` / `META_GRAPH_TIMEOUT_MS` | Optional (API env) | Graph host override for local stub + send timeout (default `https://graph.instagram.com` / 15000ms) |
+| — | — | E2E delivery (Task 023): Graph client in `apps/api/src/meta-client.ts`; harness `npx tsx apps/api/scripts/validate-delivery.ts` (45 checks); status machine includes `processing` |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a
@@ -299,8 +302,8 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 | Milestone | Status | Description |
 |---|---|---|
 | **Phase 1: Frontend Foundation** | ✅ Complete | All V1 screens on mocks (Tasks 001–010) |
-| **Phase 2: Backend & Database** | 🟡 In Progress | Fastify scaffold done (Task 011); schema apply + BullMQ queue pending |
-| **Phase 3: Meta API Integration** | ⚪ Not Started | Webhook verification, OAuth, Graph API DM dispatch |
-| **Phase 4: Production Readiness** | ⚪ Not Started | Docker orchestration, monitoring, analytics |
+| **Phase 2: Backend & Database** | ✅ Complete | Fastify + schema + engine + delivery worker (Tasks 011–023) |
+| **Phase 3: Meta API Integration** | 🟡 In Progress | Webhooks + OAuth + Graph DM dispatch shipped (015–018, 023); live Meta app not proven in this environment |
+| **Phase 4: Production Readiness** | 🟡 In Progress | Security/origins/token hardening shipped (020–022); Docker/monitoring pending |
 
 For real-time progress and the current sprint backlog, consult **[`TASK.md`](TASK.md)**.

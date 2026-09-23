@@ -18,12 +18,14 @@ import type { CommentEvent, MessageDelivery } from "@/types";
 const deliveryTone = {
   delivered: "success",
   sent: "info",
+  processing: "info",
   queued: "draft",
   failed: "failed",
 } as const;
 
 const deliveryLabel: Record<MessageDelivery["status"], string> = {
   queued: "Queued",
+  processing: "Processing",
   sent: "Sent",
   delivered: "Delivered",
   failed: "Failed",
@@ -382,6 +384,8 @@ function commentState(c: CommentEvent, deliveries: MessageDelivery[]) {
   if (dm?.status === "delivered" || dm?.status === "sent")
     return { tone: "success" as const, label: "DM sent" };
   if (dm?.status === "queued") return { tone: "draft" as const, label: "Queued" };
+  if (dm?.status === "processing")
+    return { tone: "info" as const, label: "Processing" };
   return { tone: "info" as const, label: "Matched" };
 }
 
