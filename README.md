@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/banner.jpg" alt="SMMOMO - Smart Social Media Automation SaaS" width="100%" style="border-radius: 10px;" />
+<img src="docs/assets/banner.jpg" alt="SMMOMO - Instagram Comment-to-DM Automation SaaS Platform" width="100%" style="border-radius: 10px;" />
 
-# SMMOMO
+# SMMOMO — Instagram Comment-to-DM Automation Platform
 
-### Turn Instagram Comments into Instant Conversions with Automated DMs
+### Turn Instagram Comments into Instant Conversions with Automated Direct Messages
 
 [![Status: In Development](https://img.shields.io/badge/status-in--development-yellow.svg)](TASK.md)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat&logo=next.js)](https://nextjs.org/)
@@ -13,29 +13,34 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#)
 
-[Overview](#-overview) •
-[Key Features](#-key-features) •
-[Architecture](#-architecture) •
-[Tech Stack](#-technology-stack) •
-[Getting Started](#-getting-started) •
-[Repository Layout](#-repository-layout)
+[Overview](#-overview--what-is-smmomo) •
+[Key Features](#-key-features--capabilities) •
+[Architecture](#-system-architecture--how-smmomo-works) •
+[Tech Stack](#-technology-stack--core-frameworks) •
+[Getting Started](#-getting-started--local-development) •
+[Repository Layout](#-repository-layout--monorepo-structure)
 
 ---
 
 </div>
 
-## 📌 Overview
+## 📌 Overview — What is SMMOMO?
 
-**SMMOMO** is a modern social media automation platform. **V1 Focus: Instagram Comment → Automated Private DM.**
+**SMMOMO** is an open-source **Instagram comment-to-DM automation SaaS** designed to convert social media engagement into qualified leads, community growth, and automated sales. SMMOMO streamlines the entire **Instagram Comment → Automated Private DM** lifecycle using keyword triggers, instant webhook processing, and official Meta Graph API integrations.
 
-Creators and businesses connect their Instagram account, pick a post or reel, configure an automation with trigger keywords, and define a personalized private direct message (plus an optional public reply). When followers comment with the keyword, SMMOMO captures the event, matches the automation rule, dispatches the private DM, and records real-time analytics on the dashboard.
+When followers comment on an Instagram Post or Reel with a specified trigger keyword (such as `"LINK"`, `"TEMPLATE"`, or `"DISCOUNT"`), SMMOMO detects the webhook event in real time, matches the automation rule, dispatches a personalized private message directly to their inbox, and optionally posts an instant public comment reply.
+
+### 🎯 Who is SMMOMO for?
+- **Content Creators & Influencers:** Deliver free resources, course links, and digital downloads without manually checking DMs.
+- **E-Commerce & Brands:** Convert viral Reels and product drops directly into website visits and checkout links.
+- **Social Media Managers & Agencies:** Manage scalable, automated outreach campaigns with real-time conversion and delivery metrics.
 
 > **Owner:** Bishal Aryal  
 > **Current Phase:** Frontend foundation with centralized mock API layer.
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features & Capabilities
 
 <table>
   <tr>
@@ -72,7 +77,7 @@ Creators and businesses connect their Instagram account, pick a post or reel, co
 
 ---
 
-## 🏛️ Architecture
+## 🏛️ System Architecture — How SMMOMO Works
 
 ### Event Lifecycle
 
@@ -111,7 +116,7 @@ sequenceDiagram
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Technology Stack & Core Frameworks
 
 | Layer | Technology | Details |
 |---|---|---|
@@ -126,7 +131,7 @@ sequenceDiagram
 
 ---
 
-## 📂 Repository Layout
+## 📂 Repository Layout & Monorepo Structure
 
 ```text
 smmomo/
@@ -148,7 +153,7 @@ smmomo/
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Local Development
 
 ### Prerequisites
 
@@ -187,7 +192,7 @@ Visit [http://localhost:3000](http://localhost:3000) in your browser to view the
 
 ---
 
-## ⚙️ Environment Variables
+## ⚙️ Environment Variables & Configuration
 
 Copy `.env.example` to `.env` and configure variables as features roll out:
 
@@ -209,7 +214,7 @@ cp .env.example .env
 
 ---
 
-## 🎨 Design System
+## 🎨 Design System & UI Tokens
 
 Tokens live in `apps/web/app/globals.css` under a single Tailwind v4 `@theme` block. UI code uses these semantic classes — not raw palette values.
 
@@ -245,15 +250,9 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 
 Tone-based: `success`, `paused`, `draft`, `failed`, `neutral`, `info`. Rings use the opacity modifier (`ring-success/20`) rather than dedicated ring tokens.
 
-### Rules for new UI
-
-- Brand, status, surface, and text colors must use tokens — not raw `indigo-*`/`red-*`/`zinc-900` etc.
-- Deliberate exceptions (keep as-is): intermediate greys (`text-zinc-600`, `text-zinc-700`), code/keyword chips (`bg-zinc-100`), input focus ring (`ring-zinc-300`), chart colors (`bg-indigo-500`/`bg-indigo-200`), gradient placeholders, sidebar scrim (`bg-zinc-950/40`).
-- **Dark mode is deferred** — do not add `dark:` variants. It ships as a coordinated follow-up with its own token pass, not piecemeal.
-
 ---
 
-## 📈 Project Status & Roadmap
+## 📈 Project Status & Development Roadmap
 
 | Milestone | Status | Description |
 |---|---|---|
