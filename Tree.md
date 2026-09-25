@@ -48,7 +48,7 @@ smmomo/
 │   └── web/                  Next.js 16 frontend (App Router, TypeScript, Tailwind v4)
 │       ├── package.json      Workspace "web": dev/build/start/lint/typecheck
 │       ├── tsconfig.json     Strict TS; "@/*" maps to apps/web root
-│       ├── next.config.ts    Next.js config + security headers + full CSP (021, inventory in comments)
+│       ├── next.config.ts    Next.js config + security headers + full CSP (021, inventory in comments; 025: 'unsafe-eval' gated to dev only for React dev mode)
 │       ├── proxy.ts           Next 16 proxy: cookie session refresh + route guard (app routes → /login?next=, authed off /login|/register only — /auth/confirm stays reachable)
 │       ├── postcss.config.mjs Tailwind v4 via @tailwindcss/postcss
 │       ├── eslint.config.mjs ESLint (eslint-config-next)

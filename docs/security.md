@@ -136,7 +136,7 @@ Asset sources were inventoried before locking the policy (documented in `next.co
 | Directive | Value | Why |
 |---|---|---|
 | `default-src` | `'self'` | baseline |
-| `script-src` | `'self'` `'unsafe-inline'` | Next.js RSC/hydration inline bootstrap (no third-party scripts today) |
+| `script-src` | `'self'` `'unsafe-inline'` (+ `'unsafe-eval'` **dev only**) | Next.js RSC/hydration inline bootstrap (no third-party scripts today); `'unsafe-eval'` gated on `NODE_ENV !== production` for React dev-mode debugging (Task 025 follow-up) — production builds never include it (harness-checked) |
 | `style-src` | `'self'` `'unsafe-inline'` | styled-jsx / Tailwind runtime |
 | `img-src` | `'self'` `data:` `blob:` `https:` | favicons, user media, future OG images |
 | `font-src` | `'self'` `data:` | `next/font` self-hosted Geist |

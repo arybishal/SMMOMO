@@ -364,9 +364,10 @@ than rebuilding from scratch.
 ## Task 025 - Live Meta Integration Verification & Production Delivery Validation
 
 Status: **BLOCKED** (2026-09-25) — Local validation: **PASS**; Live Meta
-validation: **BLOCKED** on missing external dependencies (below). No
-product code changed — new harness + docs only. Resume this task when the
-externals exist; do not mark COMPLETE on local harnesses alone.
+validation: **BLOCKED** on missing external dependencies (below). Changes:
+new harness + docs + one dev-only CSP gate fix (see Implementation
+changes). Resume this task when the externals exist; do not mark COMPLETE
+on local harnesses alone.
 
 ### Objective (from spec)
 
@@ -498,14 +499,24 @@ accounts as app-role users while in development mode, then execute spec
   `delivered` = confirmed delivery (hypothetical until a delivery-status
   webhook exists).
 
-### Implementation changes (§19 — no product defects found)
+### Implementation changes (§19 — no product defects found in live-path testing)
 
-- NEW `apps/api/scripts/validate-integration.ts` only. Every observed
-  anomaly during development was a harness bug (polling usage before the
-  post-finalize write landed; wrong presence-field names in the audit
-  print), fixed in the harness — product code behavior was correct.
+- NEW `apps/api/scripts/validate-integration.ts` only for the live-path
+  harness. Every observed anomaly during development was a harness bug
+  (polling usage before the post-finalize write landed; wrong
+  presence-field names in the audit print), fixed in the harness —
+  product code behavior was correct.
   This harness joins the standard validation workflow (run after the other
   suites; its rate-limit bursts poison the per-IP window for ~60s).
+- **Follow-up fix (post-report, user-reported):** Next 16 Turbopack dev +
+  React development mode calls `eval()` for call-stack reconstruction →
+  console error under the always-on CSP. Smallest fix: `next.config.ts`
+  gates `'unsafe-eval'` on `NODE_ENV !== production` (the exact escape
+  hatch the Task 021 comment pre-authorized). Verified: dev header serves
+  `script-src ... 'unsafe-eval'` (error source resolved); production
+  config evaluation serves `script-src 'self' 'unsafe-inline'` with HSTS,
+  **no unsafe-eval**; typecheck/lint/build/`validate-security` 34/34 green.
+  Regression = security harness CSP assertions + this documented rule.
 
 ### Tests run (§20) — all green
 
@@ -524,8 +535,9 @@ accounts as app-role users while in development mode, then execute spec
 ### Files changed
 
 - NEW `apps/api/scripts/validate-integration.ts` (67 checks)
-- EDIT `TASK.md`, `Tree.md`, `README.md` (docs only)
-- No product code, no migrations, no config changes.
+- EDIT `apps/web/next.config.ts` (dev-only `'unsafe-eval'` gate — post-report follow-up fix)
+- EDIT `TASK.md`, `Tree.md`, `README.md`, `docs/security.md` (docs)
+- No migrations, no other config changes.
 
 ### Commits
 
@@ -558,6 +570,7 @@ battery, then flip status to COMPLETE. If no product defect appears,
 there is no code work — observation + documentation only. If a live
 defect appears: reproduce → smallest fix → regression test → re-run
 harnesses → re-run live scenario (spec §19).
+(Dev-mode CSP eval fix already landed — see Implementation changes.)
 
 ---
 

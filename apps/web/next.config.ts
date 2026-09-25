@@ -11,10 +11,15 @@ import type { NextConfig } from "next";
 // script-src keeps 'unsafe-inline' because Next injects RSC/hydration inline
 // scripts without a per-request nonce (proxy does not rewrite HTML). External
 // script blocking is still enforced ('self' only). Nonce CSP = future work.
+// 'unsafe-eval' is dev-only (Task 025 follow-up): Next 16 Turbopack + React
+// development mode reconstruct call stacks via eval(); React never evals in
+// production, so production builds keep the strict script-src.
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const supabaseOrigin =
   process.env.NEXT_PUBLIC_SUPABASE_URL || "https://etwuqthopqrzffdgvhqs.supabase.co";
+
+const devEval = process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'";
 
 const csp = [
   "default-src 'self'",
@@ -22,7 +27,7 @@ const csp = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${devEval}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -39,9 +44,9 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
-  // CSP always on (prod + dev): dev has no eval/HMR script origin beyond self
-  // in Next 16 production-like builds; if a future dev tool breaks, gate on
-  // NODE_ENV then — do not drop the header in production.
+  // CSP always on (prod + dev). Dev adds 'unsafe-eval' above for React
+  // debugging; production builds never include it. Do not drop the header
+  // in production.
   { key: "Content-Security-Policy", value: csp },
   // HSTS only makes sense behind HTTPS — applied in production builds.
   ...(process.env.NODE_ENV === "production"
