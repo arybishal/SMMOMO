@@ -9,6 +9,7 @@ import {
 import { registerMetaRoutes } from "./meta";
 import { registerWebhookRoutes } from "./webhooks";
 import { registerAdminRoutes } from "./admin";
+import { registerContentSyncRoutes } from "./posts-sync";
 import { getWorkspaceUsage, parseUsageRange } from "./usage";
 import { corsAllowlist, missingProductionConfig } from "./origins";
 
@@ -126,6 +127,99 @@ function uuidOk(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     id,
   );
+}
+
+// --- activation gate (Task 024) ---------------------------------------------
+// Server-side authorization for status=active: the client asks to activate;
+// THIS decides. RLS-scoped reads via the caller's session, so cross-workspace
+// checks are impossible by construction. Preserve engine policy: the engine
+// still takes the first active match (created_at asc) — this only prevents
+// obvious duplicates from being created.
+interface ActivationCheck {
+  code: 400 | 409;
+  message: string;
+}
+
+async function checkActivation(
+  req: FastifyRequest,
+  opts: {
+    postId: string;
+    keyword: string;
+    privateReply: string;
+    excludeId?: string;
+  },
+): Promise<ActivationCheck | null> {
+  if (opts.keyword.trim() === "" || opts.privateReply.trim() === "") {
+    return {
+      code: 400,
+      message: "keyword and privateReply are required before activating",
+    };
+  }
+
+  const acct = await rest<SocialAccountRow[]>(
+    authed(req),
+    "social_accounts?platform=eq.instagram&select=status&limit=1",
+  );
+  if (acct.status >= 400) {
+    throw Object.assign(new Error("failed to verify Instagram connection"), {
+      statusCode: 502,
+    });
+  }
+  const account = acct.data?.[0];
+  if (!account) {
+    return {
+      code: 409,
+      message: "Connect Instagram before activating this automation.",
+    };
+  }
+  if (account.status !== "connected") {
+    return {
+      code: 409,
+      message:
+        "Instagram needs attention — reconnect before activating this automation.",
+    };
+  }
+
+  const post = await rest<{ id: string }[]>(
+    authed(req),
+    `posts?id=eq.${encodeURIComponent(opts.postId)}&select=id&limit=1`,
+  );
+  if (post.status >= 400) {
+    throw Object.assign(new Error("failed to verify post"), {
+      statusCode: 502,
+    });
+  }
+  if (!post.data?.length) {
+    return { code: 400, message: "Post no longer exists — choose another post." };
+  }
+
+  const dup =
+    await rest<{ keyword: string }[]>(
+      authed(req),
+      `automations?status=eq.active&post_id=eq.${encodeURIComponent(opts.postId)}` +
+        `&select=keyword${opts.excludeId ? `&id=neq.${encodeURIComponent(opts.excludeId)}` : ""}`,
+    );
+  if (dup.status >= 400) {
+    throw Object.assign(new Error("failed to verify automations"), {
+      statusCode: 502,
+    });
+  }
+  const wanted = opts.keyword.trim().toLowerCase();
+  if ((dup.data ?? []).some((a) => a.keyword.trim().toLowerCase() === wanted)) {
+    return {
+      code: 409,
+      message: `Another active automation already uses “${opts.keyword.trim()}” on this post.`,
+    };
+  }
+  return null;
+}
+
+function activationReply(check: ActivationCheck) {
+  return {
+    statusCode: check.code,
+    error: check.code === 409 ? "Conflict" : "Bad Request",
+    message: check.message,
+  };
 }
 
 // Minimal fixed-window rate limit (in-process). Single API instance by
@@ -266,6 +360,14 @@ export async function buildApp() {
       method === "GET",
     keys: (req) => req.ip,
   });
+  // Content import hits Graph per request — tight per-IP budget (Task 024).
+  rateLimit(app, {
+    max: 10,
+    windowMs: 60_000,
+    match: (path, method) =>
+      path === "/social-accounts/instagram/sync" && method === "POST",
+    keys: (req) => req.ip,
+  });
 
   // Keep the raw body for webhook HMAC (X-Hub-Signature-256) while still
   // parsing JSON for every other route. Strip UTF-8 BOM if present (some
@@ -396,9 +498,11 @@ export async function buildApp() {
       keyword?: unknown;
       privateReply?: unknown;
       publicReply?: unknown;
+      activate?: unknown;
     };
   }>("/automations", async (req, reply) => {
-    const { name, postId, keyword, privateReply, publicReply } = req.body ?? {};
+    const { name, postId, keyword, privateReply, publicReply, activate } =
+      req.body ?? {};
     if (
       typeof postId !== "string" ||
       postId === "" ||
@@ -413,7 +517,8 @@ export async function buildApp() {
       keyword.length > 120 ||
       privateReply.length > 4000 ||
       (typeof publicReply === "string" && publicReply.length > 1000) ||
-      (typeof name === "string" && name.length > 200)
+      (typeof name === "string" && name.length > 200) ||
+      (activate !== undefined && typeof activate !== "boolean")
     ) {
       return reply.code(400).send({
         statusCode: 400,
@@ -425,6 +530,16 @@ export async function buildApp() {
       typeof name === "string" && name.trim() !== ""
         ? name.trim()
         : keyword.trim();
+
+    // Client asks; server authorizes (connection + post + duplicate checks).
+    if (activate === true) {
+      const check = await checkActivation(req, {
+        postId,
+        keyword,
+        privateReply,
+      });
+      if (check) return reply.code(check.code).send(activationReply(check));
+    }
 
     const result = await rest<AutomationRow[]>(authed(req), "automations", {
       method: "POST",
@@ -439,7 +554,7 @@ export async function buildApp() {
           typeof publicReply === "string" && publicReply !== ""
             ? publicReply
             : null,
-        status: "draft",
+        status: activate === true ? "active" : "draft",
       },
     });
     if (result.status === 409 || result.errorCode === "23503") {
@@ -538,6 +653,37 @@ export async function buildApp() {
       });
     }
     patch.updated_at = new Date().toISOString();
+
+    // Activation is server-authorized (Task 024): load the current row to
+    // merge keyword/post context, then run the full gate before any write.
+    if (patch.status === "active") {
+      const current = await rest<
+        Pick<AutomationRow, "post_id" | "keyword" | "private_reply">[]
+      >(
+        authed(req),
+        `automations?id=eq.${req.params.id}&select=post_id,keyword,private_reply`,
+      );
+      const row = current.data?.[0];
+      if (current.status >= 400) {
+        throw Object.assign(new Error("failed to load automation"), {
+          statusCode: 502,
+        });
+      }
+      if (!row) {
+        return reply.code(404).send({ statusCode: 404, error: "Not Found" });
+      }
+      const check = await checkActivation(req, {
+        postId: row.post_id,
+        keyword:
+          typeof patch.keyword === "string" ? patch.keyword : row.keyword,
+        privateReply:
+          typeof patch.private_reply === "string"
+            ? patch.private_reply
+            : row.private_reply,
+        excludeId: req.params.id,
+      });
+      if (check) return reply.code(check.code).send(activationReply(check));
+    }
 
     const result = await rest<AutomationRow[]>(authed(req), `automations?id=eq.${req.params.id}`, {
       method: "PATCH",
@@ -725,6 +871,9 @@ export async function buildApp() {
 
   // Meta/Instagram OAuth connect + callback + disconnect (Task 015).
   registerMetaRoutes(app);
+
+  // Content import — Graph /media → posts upsert (Task 024).
+  registerContentSyncRoutes(app);
 
   // Meta webhooks: verify handshake + signed event ingest (Task 016).
   registerWebhookRoutes(app);

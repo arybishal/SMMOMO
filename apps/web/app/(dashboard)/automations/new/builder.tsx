@@ -57,6 +57,9 @@ export function AutomationBuilder({
   const [dm, setDm] = useState(initial?.privateReply ?? "");
   const [replyOn, setReplyOn] = useState(initial?.publicReply != null);
   const [reply, setReply] = useState(initial?.publicReply ?? "");
+  // New automations default to activating right after create (Task 024) —
+  // the server re-validates connection/duplicates before status becomes active.
+  const [activate, setActivate] = useState(!initial);
   const [touched, setTouched] = useState<Partial<Record<Field, boolean>>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -97,14 +100,21 @@ export function AutomationBuilder({
               // No separate name field in this builder — the keyword is the
               // user-facing label until a dedicated field exists.
               name: keyword.trim(),
+              ...(initial ? {} : { activate }),
             };
             const saved = initial
               ? await updateAutomation(initial.id, input)
               : await createAutomation(input);
             router.push(`/automations/${saved.id}`);
             router.refresh();
-          } catch {
-            setError("Could not save — check your connection and try again.");
+          } catch (err) {
+            // API validation messages (activation gate, duplicate keyword…)
+            // surface verbatim; network failures get the friendly fallback.
+            setError(
+              err instanceof Error && err.message
+                ? err.message
+                : "Could not save — check your connection and try again.",
+            );
             setPending(false);
           }
         }}
@@ -150,6 +160,15 @@ export function AutomationBuilder({
               <FieldError id="post" show={show("post")}>
                 Choose a post or reel to watch.
               </FieldError>
+              {posts.length === 0 && (
+                <p className="text-xs text-subtle-foreground">
+                  No posts yet —{" "}
+                  <Link href="/posts" className="font-medium text-primary hover:text-primary-hover">
+                    import your posts
+                  </Link>{" "}
+                  first, then come back here.
+                </p>
+              )}
             </div>
 
             {/* IF — keyword */}
@@ -241,9 +260,31 @@ export function AutomationBuilder({
           </div>
         </Card>
 
+        {!initial && (
+          <div className="flex items-center gap-2.5">
+            <input
+              id="activateNow"
+              name="activateNow"
+              type="checkbox"
+              checked={activate}
+              onChange={(e) => setActivate(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            <Label htmlFor="activateNow" className="text-foreground">
+              Activate right after saving
+            </Label>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={!isValid || pending}>
-            {pending ? "Saving…" : "Save automation"}
+            {pending
+              ? "Saving…"
+              : initial
+                ? "Save changes"
+                : activate
+                  ? "Create & activate"
+                  : "Save as draft"}
           </Button>
           <Link
             href={initial ? `/automations/${initial.id}` : "/automations"}
@@ -253,8 +294,11 @@ export function AutomationBuilder({
           </Link>
         </div>
         <p className="text-xs text-subtle-foreground">
-          New automations are saved as drafts — open the automation and press
-          Activate when you are ready to run it.
+          {initial
+            ? "Status is managed from the automation page (Pause / Activate)."
+            : activate
+              ? "Activates as soon as it is saved — the server verifies your Instagram connection first. You can pause it any time."
+              : "Saved as a draft — open the automation and press Activate when you are ready to run it."}
         </p>
       </form>
 

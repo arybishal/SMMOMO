@@ -77,8 +77,8 @@ export default async function SocialAccountsPage({
                 : "Needs attention — reconnect to restore the connection."}
           </p>
         </div>
-        <Badge tone={connected ? "success" : "failed"}>
-          {connected ? "Connected" : "Needs attention"}
+        <Badge tone={connected ? "success" : account ? "failed" : "neutral"}>
+          {connected ? "Connected" : account ? "Needs attention" : "Not connected"}
         </Badge>
       </Card>
 

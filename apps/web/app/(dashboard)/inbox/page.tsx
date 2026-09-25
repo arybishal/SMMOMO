@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { listRecentComments, listRecentDeliveries } from "@/lib/api/inbox";
 import { listAutomations } from "@/lib/api/automations";
 import { listPosts } from "@/lib/api/posts";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
+import { buttonClasses } from "@/components/ui/button";
 import { InboxView } from "./inbox";
 
 // Server page: loads everything through lib/api (mock seam — Task 008 stays
@@ -32,6 +34,12 @@ export default async function InboxPage() {
             Comments on your posts and the automated DMs they trigger will
             appear here as followers engage.
           </p>
+          <Link
+            href="/automations/new"
+            className={`${buttonClasses("secondary")} mt-4`}
+          >
+            Create automation
+          </Link>
         </Card>
       ) : (
         <InboxView

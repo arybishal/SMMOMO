@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { buttonClasses } from "@/components/ui/button";
 import { PostsList } from "./list";
+import { SyncPosts } from "./sync-button";
 
 // Server page: loads posts + automations (for the relationship column) +
 // Instagram connection context, then delegates filter/search to a client
@@ -25,6 +26,7 @@ export default async function PostsPage() {
       <PageHeader
         title="Posts"
         description="View the Instagram posts and reels available for your comment-to-DM automations."
+        action={connected ? <SyncPosts /> : undefined}
       />
 
       {/* Connection context — derived only from getInstagramAccount(). */}
@@ -62,8 +64,11 @@ export default async function PostsPage() {
             </p>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
               Your account is connected, but no posts have been imported yet.
-              Importing arrives with the Instagram API integration.
+              Sync to pull in your latest posts and reels.
             </p>
+            <div className="mt-4 flex justify-center">
+              <SyncPosts />
+            </div>
           </Card>
         ) : (
           // The connection notice above already explains that posts become

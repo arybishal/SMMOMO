@@ -151,7 +151,7 @@ Adding a third-party script/CDN requires updating `next.config.ts` and this tabl
 
 ## Rate limiting status
 
-- In-process fixed-window limiter on `POST /webhooks/*` (60/min/IP), non-GET `/admin/*` (30/min/IP), and Instagram OAuth connect/callback (20/min/IP). Map key cap 10,000 (clear-on-full) to bound memory.
+- In-process fixed-window limiter on `POST /webhooks/*` (60/min/IP), non-GET `/admin/*` (30/min/IP), Instagram OAuth connect/callback (20/min/IP), and `POST /social-accounts/instagram/sync` (10/min/IP, Task 024). Map key cap 10,000 (clear-on-full) to bound memory.
 - Login/signup rate limits are Supabase Auth–side (hosted defaults).
 - **Production multi-instance:** the in-process limiter is per-process — use a shared store (Redis / edge WAF) when scaling horizontally. Redis stays reserved-only in `.env.example` until multi-instance is real.
 
@@ -166,15 +166,15 @@ Adding a third-party script/CDN requires updating `next.config.ts` and this tabl
 |---|---|---|
 | Shared rate-limit store | medium | Required for multi-instance production (single instance today). |
 | Key rotation for `PLATFORM_ENCRYPTION_KEY` | medium | Envelope is versioned (`v1.`) for multi-key rotation, but no dual-key decrypt window is implemented yet — rotate by re-encrypting all rows while both keys are accepted. |
-| Stuck `processing` delivery reclaim | low | Operator-driven today; not a security boundary. |
 | `script-src 'unsafe-inline'` | low | Required by Next.js inline bootstrap; revisit with nonce-based CSP if a stricter posture is needed. |
 
-## Resolved (Task 021)
+## Resolved (Task 021+023)
 
 | Item | Former severity | Resolution |
 |---|---|---|
 | IG token encryption-at-rest | medium | AES-256-GCM `v1.` envelope; migration + lazy re-encrypt; member INSERT/UPDATE revoked. |
 | Full CSP | low | Always-on CSP in `next.config.ts` from real asset inventory. |
+| Stuck `processing` delivery reclaim | low | Automatic atomic reclaim (Task 023): `processing` older than `DELIVERY_STUCK_MS` → `failed`, never requeued (duplicate-DM tradeoff documented). |
 | `automations.post_id` cross-workspace FK | low | Composite FK `(workspace_id, post_id) → posts(workspace_id, id)` + unique posts target; member UPDATE on `social_accounts` revoked. |
 | Unique Instagram connection | low | Unique index `(workspace_id, platform)`; duplicate probe rows cleaned before apply. |
 

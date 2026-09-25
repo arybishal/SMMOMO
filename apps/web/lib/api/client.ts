@@ -47,21 +47,39 @@ export async function request<T>(
     if (cookie) headers.Cookie = cookie;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: options?.method ?? "GET",
-    credentials: "include",
-    headers,
-    body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: options?.method ?? "GET",
+      credentials: "include",
+      headers,
+      body:
+        options?.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    // Network-level failure — user-safe text, never fetch internals.
+    throw new Error(
+      "Could not reach the server — check your connection and try again.",
+    );
+  }
 
   if (response.status === 404) {
     return undefined as T;
   }
 
   if (!response.ok) {
-    // Safe to surface: path + status only, no response body (may contain
-    // sensitive data) and never tokens.
-    throw new Error(`API request failed: ${response.status} on ${path}`);
+    // API error bodies carry an author-written `message` (validation text,
+    // activation gate results) — safe to surface; never tokens/stacks.
+    let message = "";
+    try {
+      const data = (await response.json()) as { message?: unknown };
+      if (typeof data?.message === "string") {
+        message = data.message.slice(0, 200);
+      }
+    } catch {
+      // Non-JSON error body — fall through to the generic message.
+    }
+    throw new Error(message || `Request failed (${response.status}) — try again.`);
   }
 
   return (await response.json()) as T;

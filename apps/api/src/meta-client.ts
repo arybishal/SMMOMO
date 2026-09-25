@@ -85,22 +85,23 @@ function classifyNetworkError(err: unknown): {
   return { errorClass: "network", retryable: false };
 }
 
-async function postGraph(
+async function graph(
+  method: "GET" | "POST",
   path: string,
   token: string,
-  body: unknown,
+  body: unknown | undefined,
   fetchImpl: FetchLike,
-): Promise<GraphSendResult> {
+): Promise<GraphSendResult & { data?: unknown }> {
   const url = `${graphBase()}${path}`;
   let res: Response;
   try {
     res = await fetchImpl(url, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
-      body: JSON.stringify(body),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(
         Number(process.env.META_GRAPH_TIMEOUT_MS ?? 15_000),
       ),
@@ -118,7 +119,8 @@ async function postGraph(
   }
 
   if (res.ok) {
-    return { ok: true, httpStatus: res.status, retryable: false };
+    const data = await res.json().catch(() => undefined);
+    return { ok: true, httpStatus: res.status, retryable: false, data };
   }
 
   const text = await res.text().catch(() => "");
@@ -135,6 +137,15 @@ async function postGraph(
     retryable,
     needsReconnect: errorClass === "auth" || errorClass === "permission",
   };
+}
+
+async function postGraph(
+  path: string,
+  token: string,
+  body: unknown,
+  fetchImpl: FetchLike,
+): Promise<GraphSendResult> {
+  return graph("POST", path, token, body, fetchImpl);
 }
 
 /** Instagram Messaging API — private DM to a commenter username. */
@@ -171,6 +182,44 @@ export async function sendInstagramCommentReply(opts: {
     { message: opts.message },
     fetchImpl,
   );
+}
+
+export interface InstagramMediaItem {
+  id: string;
+  caption?: string | null;
+  media_type?: string | null;
+  media_product_type?: string | null;
+  media_url?: string | null;
+  permalink?: string | null;
+  timestamp?: string | null;
+  like_count?: number;
+  comments_count?: number;
+}
+
+/**
+ * Content import (Task 024): one page of the /{igUserId}/media edge.
+ * ponytail: single page (50 items) — enough to unblock the first automation;
+ * cursor pagination when workspaces routinely exceed 50 posts.
+ */
+export async function fetchInstagramMedia(opts: {
+  token: string;
+  igUserId: string;
+  fetchImpl?: FetchLike;
+}): Promise<GraphSendResult & { items?: InstagramMediaItem[] }> {
+  const fetchImpl = opts.fetchImpl ?? (fetch as FetchLike);
+  const out = await graph(
+    "GET",
+    `/${encodeURIComponent(opts.igUserId)}/media?fields=id,caption,media_type,media_product_type,media_url,permalink,timestamp,like_count,comments_count&limit=50`,
+    opts.token,
+    undefined,
+    fetchImpl,
+  );
+  if (!out.ok) return out;
+  const page = out.data as { data?: unknown } | undefined;
+  const items = Array.isArray(page?.data)
+    ? (page.data as InstagramMediaItem[])
+    : [];
+  return { ...out, items };
 }
 
 /**

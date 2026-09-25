@@ -6,6 +6,7 @@ import { listRecentComments, listRecentDeliveries } from "@/lib/api/inbox";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { buttonClasses } from "@/components/ui/button";
 import type { Automation, MessageDelivery, Post } from "@/types";
 
 // Tone/label maps shared with Dashboard + Inbox — same statuses, same words.
@@ -113,8 +114,11 @@ export default async function AnalyticsPage() {
   };
   for (const d of deliveries) counts[d.status] += 1;
   const attempted = counts.sent + counts.delivered + counts.failed;
+  // `delivered` rows only appear if a delivery webhook is ever added; today
+  // accepted-by-Instagram lands as `sent`. Never report 0% on sent-only data.
+  const accepted = counts.sent + counts.delivered;
   const successRate =
-    attempted > 0 ? Math.round((counts.delivered / attempted) * 100) : null;
+    attempted > 0 ? Math.round((accepted / attempted) * 100) : null;
 
   // --- Automation performance (model lifetime counters; matched desc) ---
   const automationRows: Automation[] = [...automations].sort(
@@ -244,6 +248,9 @@ export default async function AnalyticsPage() {
                 No automations yet. Performance by automation will appear
                 once you create one.
               </p>
+              <Link href="/automations/new" className={`${buttonClasses("secondary")} mt-4`}>
+                Create automation
+              </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -318,8 +325,8 @@ export default async function AnalyticsPage() {
                   {successRate}%
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Delivery success — {counts.delivered} of {attempted}{" "}
-                  attempted delivered.
+                  Delivery success — {accepted} of {attempted} attempted
+                  accepted by Instagram.
                 </p>
               </div>
             ) : (
@@ -349,8 +356,8 @@ export default async function AnalyticsPage() {
             <p className="mt-3 text-xs text-subtle-foreground">
               Based on {deliveries.length} recent delivery record
               {deliveries.length === 1 ? "" : "s"}. Attempted = sent +
-              delivered + failed (queued not yet attempted). Success rate =
-              delivered ÷ attempted.
+              delivered + failed (queued/processing not yet attempted). Success
+              rate = (sent + delivered) ÷ attempted.
             </p>
           </div>
         </Card>

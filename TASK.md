@@ -6,15 +6,52 @@ Status: IN DEVELOPMENT
 
 Current Phase: Production Readiness
 
-Current Task: Task 023 - End-to-End Instagram DM Delivery
+Current Task: Task 024 - Production Onboarding + First Automation Experience
 
-Last Completed Task: Task 023 - End-to-End Instagram DM Delivery
+Last Completed Task: Task 024 - Production Onboarding + First Automation Experience
 
-Next Task: Task 024 - (TBD — set after Task 023)
+Next Task: Task 025 - (TBD — set after Task 024)
 
-Last Updated: 2026-09-23 (Task 023)
+Last Updated: 2026-09-25 (Task 024)
 
-Verification: 2026-09-23 Task 023 validation PASSED — typecheck/lint/
+Verification: 2026-09-25 Task 024 validation PASSED — typecheck/lint/
+build:api/build exit 0; migration `20260925000000_posts_sync_unique.sql`
+APPLIED via `supabase db push` (unique posts(workspace_id, ig_media_id) for
+idempotent content sync); real content import `POST
+/social-accounts/instagram/sync` in new `apps/api/src/posts-sync.ts`
+(session preHandler + 10/min/IP rate limit; service-role token read via
+exported resolveAccessToken; `fetchInstagramMedia` GET through the Task 023
+meta-client boundary with shared classification/safe messages + reconnect
+flag; upsert `on_conflict=workspace_id,ig_media_id` merge-duplicates; IMAGE/
+REEL/CAROUSEL only — Graph VIDEO skipped, reels accepted as REEL or
+VIDEO+REELS); server-authorized activation gate `checkActivation` on POST
+(`activate?: boolean` flag → status active) and PATCH (status=active) —
+connection required/needs-reconnect → 409, missing post → 400, duplicate
+active (post, case-insensitive keyword) → 409, engine first-wins preserved;
+`apps/web/lib/onboarding.ts` pure derived state (connect→reconnect→import→
+create→activate→waiting→live) + checklist; dashboard first-run checklist
+card + 3-branch connection card (connected / needs attention / not
+connected with Reconnect/Connect CTAs); topbar connect/reconnect pill for
+every state; posts page Sync button (real POST + refresh) + empty-state
+CTA; builder "Activate right after saving" (default on) → "Create &
+activate" + server message surfacing via client.ts error-body parse;
+status-toggle shows gate messages; detail page active/waiting/draft +
+disconnected cards (§12/§13 copy); analytics success rate = (sent +
+delivered)/attempted (honest — delivered never written alone); empty-state
+CTAs (dashboard/inbox/analytics); social-accounts never-connected badge →
+"Not connected"; `(dashboard)/error.tsx` minimal boundary; **no token in
+responses** harness-checked; validate-onboarding.ts **46/46 PASS** (pure
+state 10, auth gates, sync stub mode imported=2/skipped VIDEO=1/idempotent
+re-sync, error-account 409, activation draft/unknown-post/activate 201/
+duplicate 409 both routes/self-reactivate/pause/error-restore, no-account
+workspace 400+409, token leak 4 routes, web smokes 6 incl. Sync CTA);
+baselines validate-delivery **45/45**, validate-security **32/32**,
+validate-usage **32/32**, validate-tokens **14/14**, validate-config ok;
+secret scan 0; npm audit 0; Tree.md/TASK.md/README updated. Sync happy path
+proven against META_GRAPH_BASE stub (real Graph default unchanged; LIVE
+Instagram import not possible in this env). Task 025 next.
+
+Verification (Task 023): 2026-09-23 Task 023 validation PASSED — typecheck/lint/
 build:api/build exit 0; `apps/api/src/meta-client.ts` Graph boundary
 (injectable fetch, lazy META_GRAPH_BASE, AbortSignal timeout, error class
 auth/permission/rate_limit/invalid_request/temporary/network + safe user
@@ -274,6 +311,7 @@ blocking anon); see the Task 012 record below.
 | 021 | Production Readiness + Residual Risk Cleanup | COMPLETE |
 | 022 | Production Domain + Multi-Origin Hardening | COMPLETE |
 | 023 | End-to-End Instagram DM Delivery | COMPLETE |
+| 024 | Production Onboarding + First Automation Experience | COMPLETE |
 
 Note on 004–010: Task 002 delivered working placeholder versions of every route
 (designed, data-driven, not empty). Tasks 004–010 should treat their pages as
@@ -391,6 +429,203 @@ git hygiene, docs, final report.
 - **UI:** `processing` status labeled/tone-mapped on inbox/dashboard/analytics.
 - **Redirect URI:** single source origins.ts, harness-verified.
 - **Tests:** validate-delivery 45/45; baselines green; LIVE Meta not done.
+- **Git:** commit + push `origin/main` without asking (standing directive).
+
+---
+
+## Task 024 - Production Onboarding + First Automation Experience
+
+Status: COMPLETE (2026-09-25). Roadmap next: Task 025.
+
+### Objective (from spec)
+
+Production first-run: audit the new-workspace experience end to end; derive
+onboarding state server-side; dashboard first-run with connection CTAs;
+real activation endpoint with server validation (connection, post,
+duplicate) — client never self-authorizes `status=active`; real Instagram
+content import (Graph `/media` → posts upsert) so "choose a post" is
+possible; success/waiting/failed activation states (§12/§13 honest copy,
+no guaranteed-delivery promises); useful empty states with CTAs across
+pages; mobile-safe responsive layout; preserve CORS/CSP/OAuth/token
+protections; `USE_MOCK=false` throughout; automated testing harness;
+docs; full validation; git hygiene; §33 final report. No billing, no new
+platforms, no AI, no second builder.
+
+### Decisions
+
+- **P0 content import:** posts import never existed — new workspaces could
+  not build an automation at all. New `apps/api/src/posts-sync.ts`:
+  `POST /social-accounts/instagram/sync` (session preHandler, 10/min/IP
+  rate limit added in app.ts next to the OAuth limits). Service-role
+  account/token read (members cannot see `access_token`); token via
+  exported `resolveAccessToken` from delivery.ts (same decrypt/lazy
+  re-encrypt path). Graph call through the Task 023 meta-client: new
+  `fetchInstagramMedia` (GET `/{igUserId}/media`, one page of 50,
+  injectable fetch, shared error classification + safe messages +
+  `needsReconnect` → `markAccountNeedsReconnect`, never disconnect).
+  ponytail: single page — cursor pagination when >50 posts is routine.
+- **Idempotent upsert:** migration `20260925000000_posts_sync_unique.sql`
+  adds unique `posts(workspace_id, ig_media_id)` (NULLs distinct — pre-sync
+  rows unaffected); sync POSTs with `?on_conflict=workspace_id,ig_media_id`
+  + `Prefer: resolution=merge-duplicates` → re-sync updates counts/captions,
+  never duplicates. Harness asserts row count stable across re-sync.
+- **Type mapping:** posts CHECK only allows IMAGE/REEL/CAROUSEL — Graph
+  IMAGE→IMAGE, REEL→REEL, CAROUSEL_ALBUM→CAROUSEL, VIDEO with
+  `media_product_type=REELS`→REEL, plain VIDEO/stories skipped and counted
+  (`skipped` in response), never faked.
+- **Server activation gate:** `checkActivation(req, {postId, keyword,
+  privateReply, excludeId?})` in app.ts — RLS-scoped reads via the
+  caller's session (cross-workspace checks impossible by construction):
+  no social row → 409 "Connect Instagram before activating…"; status
+  `error` → 409 reconnect message; post missing → 400; another **active**
+  automation on same post with case-insensitive-equal keyword → 409
+  "Another active automation already uses …" (excludeId makes re-activating
+  the same row idempotent). Wired into POST `/automations` via new
+  `activate?: boolean` body flag (status `active` only when validated,
+  else always `draft`) and into PATCH when `status=active` (current row
+  loaded first to merge keyword/post context). Engine first-match policy
+  unchanged — gate only prevents new duplicates.
+- **Derived onboarding state:** `apps/web/lib/onboarding.ts` — pure
+  `onboardingStep()` (connect → reconnect → import → create → activate →
+  waiting → live) + `setupChecklist()` (done/current/pending per step,
+  reconnect wording). Pure = harness-testable without React. Dashboard
+  loads `listPosts()` alongside existing five requests.
+- **Dashboard:** connection card now three honest branches (connected /
+  needs attention+Reconnect / never connected+Connect Instagram — badge
+  `success`/`failed`/`neutral`, red border only on error) and a compact
+  "Get started" checklist card for steps import/create/activate (+waiting
+  card copy "Automation is live … Waiting for comments") that hides at
+  `live` — never nags. Connect/reconnect states use the connection card
+  itself (no duplicate checklist card). Comment/delivery empty states gain
+  "Create automation" CTAs.
+- **Topbar:** pill for every state — green connected, red
+  "Instagram — reconnect", zinc "Connect Instagram" (both link to
+  /settings/social-accounts); null while loading (no flash).
+- **Builder UX:** "Activate right after saving" checkbox (default ON for
+  new, hidden for edit) → `createAutomation({…, activate})` → button label
+  "Create & activate"/"Save as draft"; footer copy states server verifies
+  the connection; zero-posts select gains "import your posts" link to
+  /posts; edit flow copy notes status lives on the detail page.
+- **Server messages reach the UI:** `client.ts` `request()` now parses the
+  API error body's author-written `message` (capped 200 chars) into the
+  thrown Error; network failure → friendly "Could not reach the server…";
+  404→undefined contract unchanged. Builder, status-toggle, and Sync
+  button show `err.message` verbatim (validation text, never tokens/stacks).
+- **Detail page §12/§13:** active+not-connected card ("deliveries will
+  fail until connected"), active+connected+0 matched "Waiting for matching
+  comments" card, draft "Not watching for comments yet" card — honest
+  waiting copy, no delivery guarantees.
+- **Analytics success rate fix:** `delivered` rows are never written (no
+  delivery webhook), so `delivered/attempted` always showed 0% — now
+  `(sent + delivered)/attempted` with the footnote formula updated; the
+  breakdown card lists statuses as-is.
+- **Other empty states:** inbox empty → Create automation CTA; analytics
+  automations empty → Create automation CTA; posts connected-empty →
+  "Sync to pull in your latest posts" + in-card Sync button; posts page
+  header gets the Sync CTA when connected (`PageHeader action`).
+- **Social accounts:** never-connected badge → neutral "Not connected"
+  (was a false "Needs attention"); error keeps red.
+- **Error boundary:** minimal `apps/web/app/(dashboard)/error.tsx` —
+  "Something went wrong" + Try again (reset) + Back to dashboard.
+- **Not done (deliberately):** sidebar nav unchanged (topbar pill +
+  dashboard CTAs make connection discoverable); no builder preview
+  rewrite (mock `@maya.skies` sample is client-only preview); usage page
+  has no backend action to CTA; no cursor pagination on media; no
+  delivery-webhook subscription (`delivered` still hypothetical).
+
+### Files
+
+- NEW `supabase/migrations/20260925000000_posts_sync_unique.sql` (APPLIED)
+- NEW `apps/api/src/posts-sync.ts` — sync route (Graph /media → upsert)
+- NEW `apps/api/scripts/validate-onboarding.ts` (46 checks)
+- NEW `apps/web/lib/onboarding.ts` — pure derived state + checklist
+- NEW `apps/web/app/(dashboard)/posts/sync-button.tsx` — SyncPosts client
+- NEW `apps/web/app/(dashboard)/error.tsx` — route-group error boundary
+- EDIT `apps/api/src/meta-client.ts` — shared `graph()` GET/POST, `data` on
+  ok, `fetchInstagramMedia` + `InstagramMediaItem`
+- EDIT `apps/api/src/delivery.ts` — export `resolveAccessToken`,
+  `markAccountNeedsReconnect` (reused by sync)
+- EDIT `apps/api/src/app.ts` — `checkActivation` gate; POST `activate` flag;
+  PATCH status=active gate; sync rate limit; registerContentSyncRoutes
+- EDIT `apps/web/lib/api/client.ts` — surface API error `message`
+- EDIT `apps/web/lib/api/posts.ts` — `syncPosts()`; `automations.ts` —
+  `activate?: boolean` on AutomationInput
+- EDIT `apps/web/app/(dashboard)/dashboard/page.tsx` — 3-branch connection
+  card, SetupCard, posts load, empty CTAs
+- EDIT `apps/web/components/layout/topbar.tsx` — status-aware pill
+- EDIT `apps/web/app/(dashboard)/posts/page.tsx` — Sync CTA + empty copy
+- EDIT `apps/web/app/(dashboard)/automations/new/builder.tsx` — activate
+  flow, server errors, zero-posts link
+- EDIT `apps/web/app/(dashboard)/automations/[id]/page.tsx` — activation
+  state cards + connection check; `status-toggle.tsx` — gate messages
+- EDIT `apps/web/app/(dashboard)/analytics/page.tsx` — success-rate fix +
+  automations CTA; `inbox/page.tsx` — CTA; `settings/social-accounts/
+  page.tsx` — never-connected badge
+- EDIT `TASK.md`, `Tree.md`, `README.md`
+
+### Validation performed
+
+- `npm run typecheck`, `npm run lint`, `npm run build:api`, `npm run build` — all exit 0.
+- Migration `20260925000000` applied via `npx supabase db push`.
+- `npx tsx apps/api/scripts/validate-onboarding.ts` → **46/46 PASS**
+  (pure onboarding state 7 + checklist 3; anon sync/PATCH 401; sync stub
+  mode imported=2 skipped=1 VIDEO, rows with ig_media_id, re-sync
+  idempotent no dup, no token material in body; error-account sync 409;
+  draft create 201/status draft; activate non-boolean 400; unknown post
+  400 "Post no longer exists"; create&activate 201/active; duplicate
+  case-insensitive 409 both POST and PATCH routes; unique keyword 201;
+  self re-activate 200; pause 200; activate-while-error 409 → restore →
+  200; no-account workspace sync 400 + activate 409; token leak scan on 4
+  routes; web smokes /dashboard /posts /automations/new
+  /settings/social-accounts 200 + Sync CTA + Instagram marker).
+- Baselines: `validate-delivery.ts` **45/45**; `validate-security.mjs`
+  **32/32**; `validate-usage.mjs` **32/32**; `validate-tokens.ts`
+  **14/14**; `validate-config.ts` ok.
+- Render checks (node fetch with real session cookie): dashboard contains
+  "Get started" + checklist + @usage_probe; posts contains "Sync posts"
+  + imported "Sunset over the bay"; builder contains "Activate right after
+  saving"; analytics contains "accepted by Instagram"; social-accounts
+  "Connected".
+- Secret scan 0 (`sb_secret_`/JWT/`sbp_`); npm audit 0.
+
+### Known limitations / honest notes
+
+- **LIVE INSTAGRAM IMPORT NOT POSSIBLE in this env** — sync happy path
+  proven against a local `META_GRAPH_BASE` stub (IMAGE/REEL/VIDEO items);
+  default host remains the real Graph API (never fakes 200). Against real
+  Meta with a non-Messaging token the endpoint returns the classified
+  409/reconnect branch — harness covers that branch too (degraded mode).
+- One media page (50 items) per sync — no cursor pagination yet; re-sync
+  updates the same rows (merge-duplicates).
+- Activation gate is per-request state: two concurrent activations of the
+  same keyword could still race (no DB constraint on active duplicates —
+  engine's first-wins keeps behavior deterministic either way).
+- `delivered` count remains 0 until a delivery-status webhook exists;
+  success rate honestly uses `sent`.
+- Sync rate limit is per-IP single-instance (same documented multi-instance
+  gap as the other limits in docs/security.md).
+
+### Final report fields (§33)
+
+- **Content import:** `POST /social-accounts/instagram/sync` — session +
+  10/min/IP; Graph `/media` via meta-client; unique
+  (workspace_id, ig_media_id) upsert; IMAGE/REEL/CAROUSEL only; re-sync
+  idempotent (harness: 2 rows stable, VIDEO skipped).
+- **Activation:** server gate on POST (`activate` flag) and PATCH —
+  409 connect/reconnect/duplicate, 400 missing post; client text surfaces
+  verbatim; engine first-wins preserved.
+- **Onboarding:** pure `onboardingStep` (7 branches) + checklist;
+  dashboard first-run card + 3-branch connection card + topbar pill for
+  every state; hides at live.
+- **States:** success (detail "Active"/waiting cards), waiting (0 matches
+  copy), failed (connected-error card + delivery error strings), empty
+  CTAs on dashboard/inbox/analytics/posts.
+- **Analytics:** success rate (sent+delivered)/attempted — no more
+  permanent 0%.
+- **Security unchanged:** CORS/CSP/OAuth/token protections untouched; no
+  tokens in any response (harness-scanned); client cannot self-activate.
+- **Tests:** validate-onboarding 46/46; baselines 45/45 + 32/32 + 32/32 +
+  14/14 + config ok; secret scan 0; audit 0.
 - **Git:** commit + push `origin/main` without asking (standing directive).
 
 ---

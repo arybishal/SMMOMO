@@ -18,6 +18,8 @@ export interface AutomationInput {
   privateReply: string;
   publicReply: string | null;
   name?: string;
+  /** New automations only: server re-validates connection before activating. */
+  activate?: boolean;
 }
 
 function mockWrite(): never {

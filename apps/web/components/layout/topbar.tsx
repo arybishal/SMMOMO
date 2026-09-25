@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconMenu } from "./icons";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import { getInstagramAccount } from "@/lib/api/social-accounts";
+
+type IgStatus = "connected" | "error" | "none" | null;
 
 function initialsOf(name: string | null, email: string | null): string {
   const source = (name ?? email ?? "").trim();
@@ -18,7 +21,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
   const [name, setName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-  const [igConnected, setIgConnected] = useState(false);
+  const [igStatus, setIgStatus] = useState<IgStatus>(null);
 
   useEffect(() => {
     const supabase = getBrowserSupabase();
@@ -33,20 +36,18 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       setName(((user?.user_metadata?.name as string | undefined) ?? null));
       setEmail(user?.email ?? null);
     });
-    getInstagramAccount()
-      .then((account) => setIgConnected(account?.status === "connected"))
-      .catch(() => setIgConnected(false));
-    const onConnectionChanged = () => {
+    const refreshConnection = () => {
       getInstagramAccount()
-        .then((account) => setIgConnected(account?.status === "connected"))
-        .catch(() => setIgConnected(false));
+        .then((account) => setIgStatus(account ? account.status : "none"))
+        .catch(() => setIgStatus("none"));
     };
-    window.addEventListener("smmomo:connection-changed", onConnectionChanged);
+    refreshConnection();
+    window.addEventListener("smmomo:connection-changed", refreshConnection);
     return () => {
       subscription.unsubscribe();
       window.removeEventListener(
         "smmomo:connection-changed",
-        onConnectionChanged,
+        refreshConnection,
       );
     };
   }, []);
@@ -72,13 +73,31 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       <div className="flex-1" />
 
-      {/* Connection pill — same semantic construction as Badge tone="success".
-          Shows only when the workspace actually has a connected account. */}
-      {igConnected && (
+      {/* Connection pill — visible in every state so first-run users always
+          see the connect/reconnect action (same Badge tone semantics). */}
+      {igStatus === "connected" && (
         <span className="hidden items-center gap-2 rounded-pill bg-success-soft px-3 py-1 text-xs font-medium text-success-strong ring-1 ring-inset ring-success/20 sm:inline-flex">
           <span className="h-1.5 w-1.5 rounded-pill bg-success" />
           Instagram connected
         </span>
+      )}
+      {igStatus === "error" && (
+        <Link
+          href="/settings/social-accounts"
+          className="hidden items-center gap-2 rounded-pill bg-danger-soft px-3 py-1 text-xs font-medium text-danger-strong ring-1 ring-inset ring-danger/20 hover:underline sm:inline-flex"
+        >
+          <span className="h-1.5 w-1.5 rounded-pill bg-danger" />
+          Instagram — reconnect
+        </Link>
+      )}
+      {igStatus === "none" && (
+        <Link
+          href="/settings/social-accounts"
+          className="hidden items-center gap-2 rounded-pill bg-neutral-soft px-3 py-1 text-xs font-medium text-neutral-strong ring-1 ring-inset ring-neutral/20 hover:underline sm:inline-flex"
+        >
+          <span className="h-1.5 w-1.5 rounded-pill bg-neutral" />
+          Connect Instagram
+        </Link>
       )}
 
       {initials && (

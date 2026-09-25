@@ -259,6 +259,7 @@ cp .env.example .env
 | `DELIVERY_POLL_MS` / `DELIVERY_BATCH` / `DELIVERY_MAX_ATTEMPTS` / `DELIVERY_STUCK_MS` | Optional (API env) | Inline delivery worker knobs (Tasks 018/023); stuck `processing` older than `STUCK_MS` reclaims to `failed` (never requeue — avoid duplicate DMs) |
 | `META_GRAPH_BASE` / `META_GRAPH_TIMEOUT_MS` | Optional (API env) | Graph host override for local stub + send timeout (default `https://graph.instagram.com` / 15000ms) |
 | — | — | E2E delivery (Task 023): Graph client in `apps/api/src/meta-client.ts`; harness `npx tsx apps/api/scripts/validate-delivery.ts` (45 checks); status machine includes `processing` |
+| — | — | Onboarding + first automation (Task 024): real content import `POST /social-accounts/instagram/sync` (unique `posts(workspace_id, ig_media_id)` upsert, IMAGE/REEL/CAROUSEL only, 10/min/IP); server activation gate (`checkActivation` on create/activate — client can never self-authorize `status=active`); derived checklist UI + topbar connect/reconnect pill; harness `npx tsx apps/api/scripts/validate-onboarding.ts` (46 checks) |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a
@@ -304,6 +305,6 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 | **Phase 1: Frontend Foundation** | ✅ Complete | All V1 screens on mocks (Tasks 001–010) |
 | **Phase 2: Backend & Database** | ✅ Complete | Fastify + schema + engine + delivery worker (Tasks 011–023) |
 | **Phase 3: Meta API Integration** | 🟡 In Progress | Webhooks + OAuth + Graph DM dispatch shipped (015–018, 023); live Meta app not proven in this environment |
-| **Phase 4: Production Readiness** | 🟡 In Progress | Security/origins/token hardening shipped (020–022); Docker/monitoring pending |
+| **Phase 4: Production Readiness** | 🟡 In Progress | Security/origins/token hardening (020–022) + production onboarding & first automation (024) shipped; Docker/monitoring pending |
 
 For real-time progress and the current sprint backlog, consult **[`TASK.md`](TASK.md)**.

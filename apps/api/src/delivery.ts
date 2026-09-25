@@ -70,8 +70,9 @@ interface SocialWork {
  * Legacy plaintext (pre-021) → use once and re-encrypt in place so the
  * compatibility path only ever moves toward ciphertext, never away from it.
  * New OAuth writes are always encrypted (meta.ts) — no new plaintext rows.
+ * Exported for content sync (Task 024) — same decrypt/upgrade path.
  */
-async function resolveAccessToken(
+export async function resolveAccessToken(
   workspaceId: string,
   stored: string,
 ): Promise<string | null> {
@@ -93,7 +94,7 @@ async function resolveAccessToken(
 }
 
 /** Surface reconnect need on the account row — never auto-disconnect. */
-async function markAccountNeedsReconnect(workspaceId: string): Promise<void> {
+export async function markAccountNeedsReconnect(workspaceId: string): Promise<void> {
   await restService(
     `social_accounts?workspace_id=eq.${encodeURIComponent(workspaceId)}&platform=eq.instagram`,
     { method: "PATCH", prefer: "return=minimal", body: { status: "error" } },

@@ -3,7 +3,9 @@ import { getAnalyticsSummary } from "@/lib/api/analytics";
 import { getInstagramAccount } from "@/lib/api/social-accounts";
 import { listRecentComments, listRecentDeliveries } from "@/lib/api/inbox";
 import { listAutomations } from "@/lib/api/automations";
+import { listPosts } from "@/lib/api/posts";
 import { getUsageSummary } from "@/lib/api/usage";
+import { onboardingStep, setupChecklist, type OnboardingStep } from "@/lib/onboarding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +34,7 @@ const deliveryLabel: Record<MessageDelivery["status"], string> = {
 };
 
 export default async function DashboardPage() {
-  const [stats, account, comments, deliveries, automations, usage] =
+  const [stats, account, comments, deliveries, automations, usage, posts] =
     await Promise.all([
       getAnalyticsSummary(),
       getInstagramAccount(),
@@ -40,9 +42,17 @@ export default async function DashboardPage() {
       listRecentDeliveries(),
       listAutomations(),
       getUsageSummary(),
+      listPosts(),
     ]);
 
   const connected = account?.status === "connected";
+  const step: OnboardingStep = onboardingStep({
+    account: account ? account.status : "none",
+    postCount: posts.length,
+    automationCount: automations.length,
+    activeCount: automations.filter((a) => a.status === "active").length,
+    hasActivity: comments.length > 0 || deliveries.length > 0,
+  });
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -57,13 +67,20 @@ export default async function DashboardPage() {
         }
       />
 
-      {/* Connection — context for everything below */}
+      {/* Connection — context for everything below. Three honest branches:
+          connected / needs attention (reconnect) / never connected. */}
       <Card
-        className={`mb-6 flex items-center gap-4 p-4 ${connected ? "" : "border-danger/30"}`}
+        className={`mb-6 flex items-center gap-4 p-4 ${
+          connected || !account ? "" : "border-danger/30"
+        }`}
       >
         <span
           className={`flex h-10 w-10 items-center justify-center rounded-pill ${
-            connected ? "bg-foreground text-background" : "bg-danger-soft text-danger"
+            connected
+              ? "bg-foreground text-background"
+              : account
+                ? "bg-danger-soft text-danger"
+                : "bg-surface-muted text-subtle-foreground"
           }`}
         >
           <IconInstagram className="h-5 w-5" />
@@ -72,7 +89,9 @@ export default async function DashboardPage() {
           <p className="truncate text-sm font-medium text-foreground">
             {connected && account
               ? `@${account.username}`
-              : "Instagram not connected"}
+              : account
+                ? "Instagram needs attention"
+                : "Instagram not connected"}
           </p>
           <p className="text-xs text-muted-foreground">
             {connected && account
@@ -83,11 +102,13 @@ export default async function DashboardPage() {
                   day: "numeric",
                   year: "numeric",
                 })}`
-              : "Comment automations cannot run until an account is connected."}
+              : account
+                ? "The connection reported an error — reconnect to keep automations running."
+                : "Connect your Instagram professional account to run comment-to-DM automations."}
           </p>
         </div>
-        <Badge tone={connected ? "success" : "failed"}>
-          {connected ? "Connected" : "Needs attention"}
+        <Badge tone={connected ? "success" : account ? "failed" : "neutral"}>
+          {connected ? "Connected" : account ? "Needs attention" : "Not connected"}
         </Badge>
         <Link
           href="/settings/social-accounts"
@@ -97,9 +118,19 @@ export default async function DashboardPage() {
               : `${buttonClasses("secondary")} shrink-0`
           }
         >
-          {connected ? "Manage" : "Open settings"}
+          {connected
+            ? "Manage"
+            : account
+              ? "Reconnect"
+              : "Connect Instagram"}
         </Link>
       </Card>
+
+      {/* First-run checklist — derived state (lib/onboarding); hidden once the
+          workspace is fully live so the dashboard never nags. */}
+      {step !== "connect" && step !== "reconnect" && step !== "live" && (
+        <SetupCard step={step} />
+      )}
 
       {/* Primary metrics — deliberately weighted, not a wall of equal cards.
           No period label: AnalyticsSummary has no period field (not fabricated). */}
@@ -155,7 +186,11 @@ export default async function DashboardPage() {
             </Link>
           </div>
           {comments.length === 0 ? (
-            <EmptyState text="No recent comments. Comments on your posts will appear here." />
+            <EmptyState
+              text="No recent comments. Comments on your posts will appear here."
+              ctaLabel="Create automation"
+              ctaHref="/automations/new"
+            />
           ) : (
             <ul className="divide-y divide-border-muted">
               {comments.slice(0, 5).map((c) => {
@@ -255,7 +290,11 @@ export default async function DashboardPage() {
           </Link>
         </div>
         {deliveries.length === 0 ? (
-          <EmptyState text="No delivery activity yet. DMs and replies will appear here after a keyword match." />
+          <EmptyState
+            text="No delivery activity yet. DMs and replies will appear here after a keyword match."
+            ctaLabel="Create automation"
+            ctaHref="/automations/new"
+          />
         ) : (
           <ul className="divide-y divide-border-muted">
             {deliveries.slice(0, 4).map((d) => {
@@ -370,6 +409,69 @@ function EmptyState({
         </Link>
       )}
     </div>
+  );
+}
+
+// First-run checklist (Task 024) — pure derived state from lib/onboarding.
+// One current step, one CTA; done steps stay visible so progress reads at a
+// glance. `waiting` = active + no activity yet (honest live state, no CTA).
+function SetupCard({ step }: { step: OnboardingStep }) {
+  const items = setupChecklist(step);
+  const current = items.find((i) => i.state === "current");
+
+  return (
+    <Card className="mb-6 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <CardTitle>
+          {step === "waiting" ? "Automation is live" : "Get started"}
+        </CardTitle>
+        {step === "waiting" && <Badge tone="info">Waiting for comments</Badge>}
+      </div>
+      {step === "waiting" ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your automation is active. When a comment matches the keyword,
+          SMMOMO sends the private DM — matches and deliveries will appear in
+          the inbox.
+        </p>
+      ) : (
+        <>
+          <ul className="mt-3 space-y-2">
+            {items.map((item) => (
+              <li key={item.key} className="flex items-center gap-2.5 text-sm">
+                <span
+                  aria-hidden="true"
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-pill text-xs ${
+                    item.state === "done"
+                      ? "bg-success-soft text-success-strong"
+                      : item.state === "current"
+                        ? "bg-primary-soft text-primary"
+                        : "bg-surface-muted text-subtle-foreground"
+                  }`}
+                >
+                  {item.state === "done" ? "✓" : item.state === "current" ? "→" : ""}
+                </span>
+                <span
+                  className={
+                    item.state === "current"
+                      ? "font-medium text-foreground"
+                      : item.state === "done"
+                        ? "text-muted-foreground"
+                        : "text-subtle-foreground"
+                  }
+                >
+                  {item.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {current && (
+            <Link href={current.href} className={`${buttonClasses("secondary")} mt-4`}>
+              {current.label}
+            </Link>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 

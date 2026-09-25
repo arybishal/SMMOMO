@@ -3,37 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
-import { updateAutomation } from "@/lib/api/automations";
-import type { Automation } from "@/types";
+import { syncPosts } from "@/lib/api/posts";
 
-// Pause / Activate on the detail page — PATCHes status through the API seam,
-// then router.refresh() so the server page re-renders with the new row.
-export function StatusToggle({
-  id,
-  status,
-}: {
-  id: string;
-  status: Automation["status"];
-}) {
+// Task 024: real content import — POST → Graph /media → posts upsert, then
+// router.refresh() so the server page re-renders with the imported rows.
+export function SyncPosts() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const next: Automation["status"] = status === "active" ? "paused" : "active";
 
-  async function toggle() {
+  async function onClick() {
     if (pending) return;
     setError(null);
     setPending(true);
     try {
-      await updateAutomation(id, { status: next });
+      await syncPosts();
       router.refresh();
     } catch (err) {
-      // Activation-gate messages (not connected, duplicate keyword…) are
-      // author-written API strings — safe and useful to show verbatim.
       setError(
         err instanceof Error && err.message
           ? err.message
-          : "Could not update status — try again.",
+          : "Could not import posts — try again.",
       );
       setPending(false);
     }
@@ -44,10 +34,10 @@ export function StatusToggle({
       <button
         type="button"
         className={buttonClasses("secondary")}
-        onClick={toggle}
+        onClick={onClick}
         disabled={pending}
       >
-        {pending ? "Saving…" : status === "active" ? "Pause" : "Activate"}
+        {pending ? "Importing…" : "Sync posts"}
       </button>
       {error && (
         <span role="alert" className="text-xs text-danger">
