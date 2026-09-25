@@ -260,6 +260,7 @@ cp .env.example .env
 | `META_GRAPH_BASE` / `META_GRAPH_TIMEOUT_MS` | Optional (API env) | Graph host override for local stub + send timeout (default `https://graph.instagram.com` / 15000ms) |
 | — | — | E2E delivery (Task 023): Graph client in `apps/api/src/meta-client.ts`; harness `npx tsx apps/api/scripts/validate-delivery.ts` (45 checks); status machine includes `processing` |
 | — | — | Onboarding + first automation (Task 024): real content import `POST /social-accounts/instagram/sync` (unique `posts(workspace_id, ig_media_id)` upsert, IMAGE/REEL/CAROUSEL only, 10/min/IP); server activation gate (`checkActivation` on create/activate — client can never self-authorize `status=active`); derived checklist UI + topbar connect/reconnect pill; harness `npx tsx apps/api/scripts/validate-onboarding.ts` (46 checks) |
+| — | — | Live Meta validation (Task 025): local integration harness `npx tsx apps/api/scripts/validate-integration.ts` (67 checks — redirect single source, webhook E2E + duplicate replay, non-match, case-insensitive, workspace isolation, reconnect UI, rate limits); **live Meta run BLOCKED** pending a real Meta app, public HTTPS origin, and Instagram Professional accounts (see TASK.md Task 025) |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a

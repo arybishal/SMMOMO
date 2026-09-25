@@ -6,15 +6,53 @@ Status: IN DEVELOPMENT
 
 Current Phase: Production Readiness
 
-Current Task: Task 024 - Production Onboarding + First Automation Experience
+Current Task: Task 025 - Live Meta Integration Verification & Production Delivery Validation (BLOCKED on live Meta — local validation PASS)
 
 Last Completed Task: Task 024 - Production Onboarding + First Automation Experience
 
-Next Task: Task 025 - (TBD — set after Task 024)
+Next Task: Task 025 (resume when live Meta dependencies are available; then set next)
 
-Last Updated: 2026-09-25 (Task 024)
+Last Updated: 2026-09-25 (Task 025)
 
-Verification: 2026-09-25 Task 024 validation PASSED — typecheck/lint/
+Verification: 2026-09-25 Task 025 LOCAL validation PASSED / LIVE Meta
+validation BLOCKED. Local: new `apps/api/scripts/validate-integration.ts`
+**67/67 PASS** — single-source redirect URI (admin view == test view ==
+`http://localhost:4000/social-accounts/instagram/callback`, no trailing
+slash, no competing mechanism), config presence audit via
+`POST /admin/integrations/meta/test` (no values printed), webhook
+handshake challenge + wrong-token 403, full webhook → persist → match →
+delivery → `sent` → usage chain against local Graph stub (comment linked
+to post, 1 private_dm delivery, `comment_received`/`comment_matched`
+exactly once, `matched_count` bumps), **duplicate webhook replay → no
+second comment/delivery/usage/attempts**, non-match comment recorded with
+0 deliveries and 0 `comment_matched`, case-insensitive KEYWORD/Keyword/
+keyword each matched with exactly 1 delivery and `matched_count == 3`,
+workspace isolation (RLS: other-workspace posts/comments/deliveries/
+automations/social_accounts all invisible to second user; API list hides
+them; PATCH other-workspace automation 404; create with other-workspace
+post 400 "Unknown post" via composite FK), UI reflects backend state
+(posts/inbox/dashboard/analytics show the fixture rows; dashboard shows
+reconnect guidance when account status=error with no token material in
+HTML), analytics formula footnote asserted (`Attempted = sent + delivered
++ failed`, "accepted by Instagram"), rate limits verified live
+(sync 429 past 10/min, OAuth connect past 20/min, webhook past 60/min,
+admin non-GET past 30/min — burst runs last, ~60s per-IP cooldown).
+Regression baselines: validate-delivery **45/45**, validate-onboarding
+**46/46**, validate-security **34/34**, validate-usage **32/32**,
+validate-tokens **14/14** (trailing node-on-Windows UV_HANDLE assert is
+benign, pre-existing), validate-config ok; typecheck/lint/build:api/
+build:web exit 0; secret-value scan 0 (docs mention pattern strings
+only); npm audit 0 vulnerabilities. LIVE Meta BLOCKED — exact
+dependencies: (1) a real Meta developer app with App ID/App Secret
+configured (`platform_settings` is empty, no META_* env in production
+form), (2) a publicly reachable HTTPS API origin so Meta can deliver
+webhooks to `/webhooks/instagram` (no tunnel/deployment exists in this
+environment), (3) an Instagram Professional account to connect plus a
+controlled second account to comment from and receive the DM. No product
+code changed in Task 025 — harness + docs only. Task 025 stays BLOCKED
+until those externals exist; do not mark COMPLETE.
+
+Verification (Task 024): 2026-09-25 Task 024 validation PASSED — typecheck/lint/
 build:api/build exit 0; migration `20260925000000_posts_sync_unique.sql`
 APPLIED via `supabase db push` (unique posts(workspace_id, ig_media_id) for
 idempotent content sync); real content import `POST
@@ -312,6 +350,7 @@ blocking anon); see the Task 012 record below.
 | 022 | Production Domain + Multi-Origin Hardening | COMPLETE |
 | 023 | End-to-End Instagram DM Delivery | COMPLETE |
 | 024 | Production Onboarding + First Automation Experience | COMPLETE |
+| 025 | Live Meta Integration Verification & Production Delivery Validation | BLOCKED (local PASS — live deps missing) |
 
 Note on 004–010: Task 002 delivered working placeholder versions of every route
 (designed, data-driven, not empty). Tasks 004–010 should treat their pages as
@@ -321,6 +360,206 @@ than rebuilding from scratch.
 ---
 
 # Current Task
+
+## Task 025 - Live Meta Integration Verification & Production Delivery Validation
+
+Status: **BLOCKED** (2026-09-25) — Local validation: **PASS**; Live Meta
+validation: **BLOCKED** on missing external dependencies (below). No
+product code changed — new harness + docs only. Resume this task when the
+externals exist; do not mark COMPLETE on local harnesses alone.
+
+### Objective (from spec)
+
+Prove the existing core product against the real Meta platform end to end:
+real OAuth connect, real `/media` sync, real automation activation, real
+Instagram comment → signed webhook → engine match → Graph DM → delivery
+states → usage exactly once, duplicate-webhook safety, non-match behavior,
+case-insensitive matching, reconnect states, rate limits, workspace
+isolation, UI reflecting real backend state, analytics formula audit.
+Official Meta APIs only — no scraping/browser automation/workarounds. Fix
+only real integration blockers; no scope expansion (no billing/AI/new
+platforms/Redis).
+
+### Exact external dependencies (why BLOCKED)
+
+1. **Real Meta developer app** — `platform_settings` row is empty
+   (meta_app_id/secret/verify token all unset) and no production
+   `META_APP_ID`/`META_APP_SECRET`/`META_WEBHOOK_VERIFY_TOKEN` exist in any
+   env file (only ad-hoc local test values in dev shells). Without App ID +
+   Secret the OAuth exchange, webhook signature verification, and app
+   subscription cannot run against real Meta.
+2. **Publicly reachable HTTPS API origin** — Meta delivers webhooks to
+   `<API_ORIGIN>/webhooks/instagram`; this environment only has
+   `http://localhost:4000` and no tunnel (no ngrok/cloudflared) or deployed
+   host. Real comment events cannot reach the server.
+3. **Instagram Professional accounts** — one Business/Creator account to
+   connect + sync + own the post, and one controlled second account to post
+   the test comment and receive the DM. None available; personal accounts
+   cannot use the API at all.
+
+When those exist: configure App ID/Secret + verify token (Settings →
+Integrations or env), set `WEB_ORIGIN`/`API_ORIGIN`/`CORS_ORIGIN` to the
+public HTTPS deployment, register the single-source redirect URI in the
+Meta dashboard, subscribe webhook fields `comments,messages`, add the test
+accounts as app-role users while in development mode, then execute spec
+§5–§16 live and record results here.
+
+### Live Meta configuration verified (§2/§3/§4 — code + docs audit)
+
+- **Single redirect URI source confirmed:** `origins.resolveRedirectUri()`
+  = `META_REDIRECT_URI ?? API_ORIGIN + /social-accounts/instagram/callback`;
+  `platform-config.ts` delegates; admin SaveMetaConfig has **no redirect
+  field** (display/`redirectUriPresent` only) — no competing mechanism
+  exists to reconcile. Harness asserts admin view == test view ==
+  `http://localhost:4000/social-accounts/instagram/callback`, no trailing
+  slash. Documented rule: exactly one source; register that exact string
+  (protocol/host/port/path, HTTPS in production, no trailing slash) in the
+  Meta app dashboard.
+- **Config audit (no secrets printed):** presence-only
+  `POST /admin/integrations/meta/test` reports appId/secret/verify-token
+  configured flags + `source` labels (db|env|none) — in the local dev run
+  all three come from `env`; production must provide them via secret
+  manager or encrypted `platform_settings`. Never: App Secret, service-role
+  key, encryption key, access tokens, session/webhook secrets — none
+  printed, none committed (value scan 0).
+- **Permission/scope names checked against current official Meta docs
+  (2026):** `instagram_business_basic`, `instagram_business_manage_comments`,
+  `instagram_business_manage_messages` are the **current** scope values
+  (introduced Sept 2024; old `business_*` values deprecated 2025-01-27 —
+  SMMOMO already uses the new names). OAuth hosts match official flow
+  (`www.instagram.com/oauth/authorize` → `api.instagram.com/oauth/access_token`,
+  API host `graph.instagram.com`); messaging endpoint `POST /{igUserId}/messages`
+  with `recipient:{id:IGSID}` and webhook app subscription via
+  `graph.facebook.com/v22.0/{appId}/subscriptions` (fields `comments,messages`)
+  match current docs. No deprecated permission names used.
+- **Live-only risks documented (cannot be proven without accounts):**
+  Standard Access apps may only message app-role users until app review;
+  Instagram messaging may require a customer-initiated 24h window (the
+  official comment-scoped alternative is `POST /{comment-id}/private_replies`
+  at 750/hour — current implementation sends `/{igUserId}/messages`, which
+  only a live test can accept or reject); Graph calls omit an explicit
+  version (relies on app default version); webhook subscribe is best-effort
+  (dashboard fallback documented). These are the first things to observe in
+  the live run.
+
+### What was proven locally (harness `validate-integration.ts` — 67/67)
+
+- **§2/§3 redirect + config:** as above; webhook GET handshake returns the
+  challenge for the right verify token, 403 for a wrong one.
+- **§8 comment → delivery chain (synthetic signed webhook):** comment
+  persisted with post linkage → engine matched the active fixture
+  automation (`TESTKEY025`, case-insensitive contains) → exactly 1
+  `private_dm` delivery queued → inline worker claimed (attempts=1) →
+  Graph send via local `META_GRAPH_BASE` stub → status `sent` →
+  `comment_received` usage ×1, `comment_matched` usage ×1,
+  `private_dm_sent` usage ×1 (polled: usage is written after the owned
+  `sent` finalize by design — count-only-terminal ordering).
+- **§9 state semantics:** `queued → processing → sent` observed; `sent`
+  means "accepted by the send path" (stub today, Meta HTTP 200 in live);
+  `delivered` never fabricated — remains dependent on a future
+  delivery-status webhook/event (documented, unchanged).
+- **§10 duplicate webhook (DB-level):** identical payload replay → still
+  1 comment row (unique `workspace_id,ig_comment_id` + ignore-duplicates),
+  1 delivery, usage counts unchanged, `matched_count` unchanged, delivery
+  `attempts` unchanged → no second Graph send. Constraints, not just
+  app behavior.
+- **§11 non-match:** comment recorded (`comment_received`), `matched=false`,
+  0 deliveries, 0 `comment_matched` usage, no billable DM event.
+- **§12 case-insensitive:** `TESTKEY025` / `testkey025` in different cases
+  each matched with exactly 1 delivery; final `matched_count == 3`
+  (non-match contributed 0).
+- **§13 reconnect:** API side already covered by validate-delivery (401/403
+  → `needsReconnect`, safe message, token redacted, not retryable) and
+  validate-onboarding (sync/activate 409 with reconnect copy); harness adds
+  UI proof — account flipped to `error` → dashboard renders reconnect
+  guidance, page HTML contains no token material → restored to `connected`.
+- **§14 rate limits (live against running API):** sync 429 past 10/min/IP,
+  OAuth connect 429 past 20/min/IP, webhook 429 past 60/min/IP, admin
+  non-GET 429 past 30/min/IP — all enforced before auth/validation as
+  designed; in-process single-instance limitation unchanged and still
+  documented in `docs/security.md` (no Redis introduced).
+- **§15 workspace isolation:** second user's JWT sees **0 rows** of the
+  other workspace's posts/comments/deliveries/automations/social_accounts;
+  API list hides them; `PATCH /automations/:id` of other workspace → 404;
+  creating an automation with the other workspace's post → 400 "Unknown
+  post" (composite FK `(workspace_id, post_id)`). API + DB constraints both
+  verified.
+- **§16 UI reflects state:** /posts shows the fixture media, /inbox shows
+  the real comment, /dashboard shows connection + fixture, /analytics
+  renders; no fake/demo values introduced anywhere.
+- **§17 analytics formula audited:** `attempted = sent + delivered + failed`
+  (queued/processing excluded — not yet attempted), `accepted = sent +
+  delivered`, `successRate = accepted/attempted`, empty → null → honest
+  "No delivery records yet" / "no attempts yet" copy. Failed counts in the
+  denominator ✔; queued/processing never counted successful ✔; `sent` never
+  double-counted as `delivered` ✔ (mutually exclusive row statuses);
+  footnote states the formula verbatim (harness-asserted). Distinction
+  documented rather than strengthened: `sent` = operational acceptance,
+  `delivered` = confirmed delivery (hypothetical until a delivery-status
+  webhook exists).
+
+### Implementation changes (§19 — no product defects found)
+
+- NEW `apps/api/scripts/validate-integration.ts` only. Every observed
+  anomaly during development was a harness bug (polling usage before the
+  post-finalize write landed; wrong presence-field names in the audit
+  print), fixed in the harness — product code behavior was correct.
+  This harness joins the standard validation workflow (run after the other
+  suites; its rate-limit bursts poison the per-IP window for ~60s).
+
+### Tests run (§20) — all green
+
+- `npm run typecheck` / `npm run lint` / `npm run build:api` / `npm run build` — exit 0.
+- validate-delivery **45/45**; validate-onboarding **46/46**;
+  validate-security **34/34**; validate-usage **32/32**;
+  validate-tokens **14/14**; validate-config ok;
+  validate-integration **67/67**.
+- Secret **value** scan: 0 (service-role + encryption-key values absent
+  from all tracked files; docs mention pattern strings only).
+- `npm audit`: 0 vulnerabilities.
+- Note: validate-tokens exits via a benign node-on-Windows UV_HANDLE
+  assertion after printing `pass=14 fail=0` (pre-existing, documented in
+  Task 024).
+
+### Files changed
+
+- NEW `apps/api/scripts/validate-integration.ts` (67 checks)
+- EDIT `TASK.md`, `Tree.md`, `README.md` (docs only)
+- No product code, no migrations, no config changes.
+
+### Commits
+
+- This change: `local integration harness: webhook E2E, duplicate safety, isolation, rate limits (Task 025)` → `origin/main`.
+
+### Known limitations
+
+- **Live OAuth / media sync / real comment / real DM / real duplicate
+  delivery from Meta: NOT OBSERVED** — blocked on the three externals
+  above. Local proofs use synthetic signed webhooks (valid HMAC with the
+  configured App Secret) and a local Graph stub that never fakes a 200 on
+  the real host.
+- One media page (50) per sync, no cursor pagination (unchanged).
+- Usage event written immediately after the owned `sent` finalize — a
+  crash in that narrow window would lose one event (undercount); ordering
+  is deliberate (record-before-finalize would risk double-count on lost
+  ownership). Documented, not changed.
+- Rate-limit verification is same-IP/in-process; multi-instance still
+  needs a shared store (existing documented residual risk).
+- Analytics `delivered` count remains 0 until a delivery-status webhook
+  exists.
+
+### Exact next task
+
+**Resume Task 025** the moment a real Meta app + public HTTPS origin +
+Instagram Professional accounts exist: configure secrets, register the
+single-source redirect URI, subscribe webhooks, run the live scenario
+spec §5–§16, record results in this section, re-run the full validation
+battery, then flip status to COMPLETE. If no product defect appears,
+there is no code work — observation + documentation only. If a live
+defect appears: reproduce → smallest fix → regression test → re-run
+harnesses → re-run live scenario (spec §19).
+
+---
 
 ## Task 023 - End-to-End Instagram DM Delivery
 

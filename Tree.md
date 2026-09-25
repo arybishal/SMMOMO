@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-25 (Task 024 — Production Onboarding + First Automation Experience)
+Last updated: 2026-09-25 (Task 025 — Live Meta Integration Verification & Production Delivery Validation)
 
 ---
 
@@ -27,7 +27,8 @@ smmomo/
 │   │   │   ├── validate-usage.mjs  Task 019 validation harness (idempotency, date range, RLS, webhook, route sweep)
 │   │   │   ├── validate-security.mjs  Task 020+021+022 security harness (authz, input, webhook sig, headers, CSP, RLS column probe, member UPDATE token, no stack leak, CORS origin allowlist)
 │   │   │   ├── validate-delivery.ts  Task 023 delivery harness: Graph contract (success/401/403/429/4xx/5xx/timeout/refused/malformed), error classification + token redaction, {{first_name}} literal, redirect-uri single source, stuck reclaim + claim race (service-role)
-│   │   │   └── validate-onboarding.ts  Task 024 onboarding harness (46 checks): pure step/checklist state, sync stub mode (import/idempotent/skipped VIDEO), activation gates (draft/409 duplicate/400 missing post), token-leak scan, web smokes
+│   │   │   ├── validate-onboarding.ts  Task 024 onboarding harness (46 checks): pure step/checklist state, sync stub mode (import/idempotent/skipped VIDEO), activation gates (draft/409 duplicate/400 missing post), token-leak scan, web smokes
+│   │   │   └── validate-integration.ts  Task 025 local integration harness (67 checks): single-source redirect + config presence audit, webhook→match→delivery→sent→usage E2E (Graph stub), duplicate replay, non-match, case-insensitive, workspace isolation (RLS+API+FK), reconnect UI, analytics formula, rate limits (runs last — 60s per-IP cooldown)
 │   │   └── src/
 │       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap; 024: sync 10/min/IP) + CORS allowlist (022 exact Set match, credentials, missing Origin = server-to-server) + production config warn (022 names only) + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + checkActivation gate (024: POST activate flag + PATCH status=active) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes + registerContentSyncRoutes
 │       │   ├── origins.ts    Central origin config (022): WEB_ORIGIN, API_ORIGIN, corsAllowlist (CORS_ORIGIN comma-separated exact), resolveRedirectUri, webhookCallbackUrl, missingProductionConfig (prod-only, names only)
@@ -205,6 +206,7 @@ smmomo/
   `apps/api/scripts/validate-tokens.ts` → Task 021 crypto + DB encryption checks.
   `apps/api/scripts/validate-delivery.ts` → Task 023 delivery harness (Graph contract, reclaim).
   `apps/api/scripts/validate-onboarding.ts` → Task 024 onboarding harness (sync + activation gates + web smokes).
+  `apps/api/scripts/validate-integration.ts` → Task 025 local integration harness (webhook E2E, duplicate safety, isolation, rate limits; run last).
   `docs/security.md` → Security model, residual risks, prod requirements, CSP inventory, token storage, origin/CORS/cookie model.
 - `apps/web/app/globals.css` → Design tokens (@theme): semantic colors, radius,
   shadow, fonts. Source of truth for the visual foundation — see README → Design System.
