@@ -99,7 +99,15 @@ When followers comment on an Instagram Post or Reel with a specified trigger key
   <img src="docs/assets/dashboard-preview.jpg" alt="SMMOMO Modern SaaS Dashboard Interface" width="100%" style="border-radius: 10px; margin: 16px 0;" />
 </div>
 
-Track incoming comment activity, monitor queue health, view active campaign conversions, and manage automations from a single centralized dark-themed command center.
+**Dashboard** — the "is it working / what's happening / what next" command center: profile + timezone greeting, connection status with reconnect guidance, onboarding setup card, Today's activity and Automation health, a Needs Attention section that only surfaces real problems (connection errors, failed deliveries), a recent-activity feed, and contextual quick actions.
+
+**Interactive demo** — a 4-step walkthrough on the Dashboard (`dashboard/demo.tsx`) with a "Try the demo" animation. It is a pure client island: no data-layer imports, so it cannot create comments/deliveries, increment usage, affect analytics or automation statistics, or call Meta APIs.
+
+**Analytics** — the "what happened" page (`/analytics`): URL-driven filters (date-range presets, custom range ≤ 366 days, automation, post), KPIs with honest period-over-period deltas (shown only when the previous period is non-zero), an activity chart that auto-aggregates weekly beyond 31 buckets, a received → matched → DM funnel, automation and content performance tables, delivery health (`Attempted = sent + delivered + failed`; Graph "sent" = *accepted by Instagram*), failure records, and plain-language insights. Invalid ranges render an honest notice with a reset link — never fabricated numbers.
+
+**Automation simulator** — the automation builder includes a local comment simulator that mirrors the engine's keyword rule exactly (non-empty keyword, case-insensitive contains, comment's own post) and explicitly sends nothing.
+
+All of the above is served by `GET /analytics/overview` (`apps/api/src/analytics.ts`), which reads comments/deliveries/posts/automations through the caller's own JWT — workspace RLS is the boundary — with paired range validation, previous-period comparison, and zero database migrations. Known limitations and deferred items are tracked in `TASK.md` under Task 027.
 
 ---
 
@@ -163,7 +171,7 @@ sequenceDiagram
 smmomo/
 ├── apps/
 │   ├── web/              # Next.js frontend application
-│   │   ├── app/          # App router pages (dashboard, automations, inbox, settings)
+│   │   ├── app/          # App router pages (dashboard, automations, posts, inbox, analytics, settings)
 │   │   ├── components/   # UI components and layout shells
 │   │   └── lib/          # API layer, mock datasets, Supabase clients
 │   └── api/              # Fastify backend service (scaffolded: CORS + /health)

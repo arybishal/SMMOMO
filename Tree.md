@@ -3,7 +3,7 @@
 Living map of the repository. Update this file whenever files or directories are
 created, deleted, renamed, or moved.
 
-Last updated: 2026-09-25 (Task 026 — Settings & Profile Redesign)
+Last updated: 2026-09-25 (Task 027 — Dashboard + Analytics Complete Redesign)
 
 ---
 
@@ -29,9 +29,9 @@ smmomo/
 │   │   │   ├── validate-delivery.ts  Task 023 delivery harness: Graph contract (success/401/403/429/4xx/5xx/timeout/refused/malformed), error classification + token redaction, {{first_name}} literal, redirect-uri single source, stuck reclaim + claim race (service-role)
 │   │   │   ├── validate-onboarding.ts  Task 024 onboarding harness (46 checks): pure step/checklist state, sync stub mode (import/idempotent/skipped VIDEO), activation gates (draft/409 duplicate/400 missing post), token-leak scan, web smokes
 │   │   │   ├── validate-account.mjs  Task 026 account harness (51 checks): avatar upload/validate/scoping/cross-user, workspace read+rename+role, profile metadata isolation, email/password/session flows, settings pages+nav, avatar rate limit, leak scan
-│   │   │   └── validate-integration.ts  Task 025 local integration harness (67 checks): single-source redirect + config presence audit, webhook→match→delivery→sent→usage E2E (Graph stub), duplicate replay, non-match, case-insensitive, workspace isolation (RLS+API+FK), reconnect UI, analytics formula, rate limits (runs last — 60s per-IP cooldown)
+│   │   │   └── validate-integration.ts  Task 025+027 local integration harness (91 checks): single-source redirect + config presence audit, webhook→match→delivery→sent→usage E2E (Graph stub), duplicate replay, non-match, case-insensitive, workspace isolation (RLS+API+FK), reconnect UI, analytics formula, overview API matrix + scoping/validation/RLS (027 §J), web smokes (ranges/automation filter/demo island), static demo+simulator data-layer isolation, rate limits (runs last — 60s per-IP cooldown; SKIP_CLEANUP=1 debug aid)
 │   │   └── src/
-│       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap; 024: sync 10/min/IP; 026: avatar 10/min/IP) + CORS allowlist (022 exact Set match, credentials, missing Origin = server-to-server) + production config warn (022 names only) + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + checkActivation gate (024: POST activate flag + PATCH status=active) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes + registerContentSyncRoutes + registerAccountRoutes (026 avatar/workspace)
+│       │   ├── app.ts        buildApp(): error handler (no stack leak) + security headers + rate limit (020/021: webhooks, admin, OAuth + key cap; 024: sync 10/min/IP; 026: avatar 10/min/IP) + CORS allowlist (022 exact Set match, credentials, missing Origin = server-to-server) + production config warn (022 names only) + raw-body JSON parser + auth preHandler (skips /health, OAuth callback, /webhooks/*) + product routes (comments/deliveries live reads + /usage/summary from usage_events) + checkActivation gate (024: POST activate flag + PATCH status=active) + registerMetaRoutes + registerWebhookRoutes + registerAdminRoutes + registerContentSyncRoutes + registerAccountRoutes (026 avatar/workspace) + registerAnalyticsRoutes (027 GET /analytics/overview)
 │       │   ├── origins.ts    Central origin config (022): WEB_ORIGIN, API_ORIGIN, corsAllowlist (CORS_ORIGIN comma-separated exact), resolveRedirectUri, webhookCallbackUrl, missingProductionConfig (prod-only, names only)
 │       │   ├── crypto.ts     AES-256-GCM shared helpers (021): encryptSecret/decryptSecret, v1 envelope, encryptionKey/encryptionReady — platform secrets + IG tokens
 │       │   ├── usage.ts      Usage service (019): recordUsageEvent (service-role, idempotent), usageIdempotencyKey, currentUsagePeriod/parseUsageRange, getWorkspaceUsage (end-user JWT + RLS)
@@ -43,7 +43,8 @@ smmomo/
 │       │   ├── engine.ts     Comment keyword engine (017): case-insensitive contains match → claim matched → bump matched_count → enqueue deliveries + comment_matched usage (019 winning claim only)
 │       │   ├── meta.ts       Instagram OAuth: connect/callback/disconnect + state HMAC + service-role token upsert via encryptSecret (021) + best-effort webhook topic subscribe (credentials via getMetaConfig; origins via origins.ts 022)
 │       │   ├── webhooks.ts   Meta webhooks: timing-safe GET verify handshake (020) + POST signature-checked comment persist → runCommentEngine → comment_received usage (019 inserted only) (service_role, idempotent; tokens via getMetaConfig)
-│       │   ├── account.ts    Task 026 account routes: POST/DELETE /account/avatar (base64 JSON, magic-byte sniff, 2MB cap, caller-JWT storage calls, idempotent delete, storage HTTP400+statusCode:404 = success) + GET/PATCH /workspace (reverse-embed role/memberCount, owner/admin rename gate)
+│   │       ├── account.ts    Task 026 account routes: POST/DELETE /account/avatar (base64 JSON, magic-byte sniff, 2MB cap, caller-JWT storage calls, idempotent delete, storage HTTP400+statusCode:404 = success) + GET/PATCH /workspace (reverse-embed role/memberCount, owner/admin rename gate)
+│   │       ├── analytics.ts  Task 027 GET /analytics/overview: range/tz/id validation (400/404), caller-JWT RLS reads of comments+deliveries+posts+automations, totals + previous period, zero-filled day/hour series, per-automation + content rows, delivery health + failures, scope filters (automationId→its post, postId), limit=10000 `truncated`
 │   │       ├── supabase.ts   Cookie session → verify JWT (+email) → PostgREST as user (204-safe); ensureWorkspace(); restService() for webhook/engine/delivery/platform_settings; exports SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY (026)
 │   │       └── server.ts     Listen on PORT (default 4000) + startDeliveryWorker (018)
 │   │
@@ -69,24 +70,27 @@ smmomo/
 │       │   │   └── auth/confirm/page.tsx  Email-confirmation callback: PKCE code / implicit tokens → verified | already | expired states
 │       │   └── (dashboard)/
 │       │       ├── layout.tsx        Force-dynamic DashboardShell (sidebar + topbar; session-scoped API data — never prerender)
-│       │       ├── dashboard/page.tsx       3-branch connection card + Get started checklist (024 SetupCard, hidden at live), KPIs, usage, activity, deliveries, automations (+ empty-state CTAs)
+│       │       ├── dashboard/page.tsx       Task 027 redesign: profile greeting (name + profile tz), connection card (keeps @username anchor), SetupCard (024, condition unchanged), flow card, Today's activity + Automation health (overview API), Needs Attention (account error + failures only), recent-activity feed, Quick actions, empty states
+│       │       ├── dashboard/demo.tsx       Client island (027): 4-step Interactive demo — tabs + prev/next + "Try the demo" animation (reduced-motion aware, timer cleanup); pure local state, no data-layer imports (harness-static-checked)
 │       │       ├── error.tsx                Route-group error boundary (024): "Something went wrong" + Try again (reset) + Back to dashboard
 │       │       ├── automations/
 │       │       │   ├── page.tsx             Server page: header, summary counts, empty state
 │       │       │   ├── list.tsx             Client island: status filter + search + responsive rows (not a route)
 │       │       │   ├── new/
 │       │       │   │   ├── page.tsx         Server page: searchParams Promise; ?edit prefill (404 if unknown) + ?post preselect → builder
-│       │       │   │   └── builder.tsx      Client island: post/keyword/DM/reply form, validation, live preview, "Activate right after saving" checkbox (024, activate flag → server gate), server error messages, real save (POST/PATCH via lib/api)
-│       │       │   └── [id]/page.tsx        Detail; Edit → /automations/new?edit=id; StatusToggle island (Pause/Activate PATCH); 404s if unknown
+│       │       │   │   ├── builder.tsx      Client island: post/keyword/DM/reply form, validation, live preview, "Activate right after saving" checkbox (024, activate flag → server gate), server error messages, real save (POST/PATCH via lib/api); wraps right column in Simulator (027)
+│       │       │   │   └── simulator.tsx    Client island (027): comment simulator — mirrors engine match rule (non-empty keyword, case-insensitive contains, comment's own post), match/no-match result, DM preview with {{first_name}}; "Local test — nothing is sent", no data-layer imports (harness-static-checked)
+│       │       │   └── [id]/page.tsx        Detail; Edit → /automations/new?edit=id; StatusToggle island (Pause/Activate PATCH); 404s if unknown; 027: last-30d stats card (overview?automationId), lifetime relabeled "· all time", real activity list
 │       │       │       └── status-toggle.tsx  Client island: PATCH status + router.refresh (not a route)
 │       │       ├── posts/
 │       │       │   ├── page.tsx             Server page: header + Sync CTA when connected (024), Instagram connection context, empty states, delegates list
 │       │       │   ├── list.tsx             Client island: type filter + search + table/card rows + automation join (not a route)
 │       │       │   └── sync-button.tsx      Client island (024): POST /social-accounts/instagram/sync → router.refresh, err.message surfacing (not a route)
 │       │       ├── inbox/
-│       │       │   ├── page.tsx             Server page: header, empty state, comments+deliveries+automations+posts via lib/api → island
-│       │       │   └── inbox.tsx            Client island: activity list + detail panel, selection/search/outcome+post filters (not a route)
-│       │       ├── analytics/page.tsx       Server page: KPIs (Dashboard-consistent), 7-day CSS chart + text summary, automation/content performance tables, delivery breakdown + failure records (all via lib/api)
+│       │       │   ├── page.tsx             Server page: header, empty state, comments+deliveries+automations+posts via lib/api → island; 027: ?outcome= deep link passed through raw (validated inside island)
+│       │       │   └── inbox.tsx            Client island: activity list + detail panel, selection/search/outcome+post filters (not a route); 027: initialOutcome prop seeds outcome from ?outcome=
+│       │       ├── analytics/page.tsx       Server page (027 redesign): URL-driven filters (range/custom dates/automation/post), invalid-range notice + reset link, KPIs + pctDelta, CSS bar chart (weekly aggregation >31 buckets, text summary), funnel, automation + content tables, delivery health + failures (formula footnote preserved verbatim), insights — all via lib/api
+│       │       ├── analytics/filters.tsx    Client island (027): range preset buttons + custom date inputs + automation/post selects, URL-driven (no local filter state)
 │       │       └── settings/
 │       │           ├── layout.tsx                 Server layout (026): grouped nav (shell above pages, admin-gated Integrations row)
 │       │           ├── settings-nav.tsx           Client island (026): grouped desktop nav / mobile pill row (Profile, Security, Workspace, Notifications · Usage, Social accounts, Integrations)
@@ -129,7 +133,7 @@ smmomo/
 │       │   │   ├── automations.ts      listAutomations, getAutomation, createAutomation (activate?: boolean → server gate, 024), updateAutomation
 │       │   │   ├── posts.ts            listPosts, getPost, syncPosts (024: POST /social-accounts/instagram/sync)
 │       │   │   ├── social-accounts.ts  listSocialAccounts, getInstagramAccount, instagramConnectHref, disconnectInstagram
-│       │   │   ├── analytics.ts        getAnalyticsSummary
+│       │   │   ├── analytics.ts        getAnalyticsSummary (legacy) + getAnalyticsOverview (027: range/automation/post params → GET /analytics/overview)
 │       │       │   ├── usage.ts            getUsageSummary (/usage/summary — usage_events authority)
 │       │   │   ├── admin-meta.ts       getAdminMetaConfig, saveAdminMetaConfig, testAdminMetaConfig (platform-admin only)
 │       │   │   ├── avatar.ts           Task 026: uploadAvatar (base64 POST /account/avatar), deleteAvatar (DELETE, owner path)
@@ -140,6 +144,8 @@ smmomo/
 │       │   │   ├── server.ts           Server Supabase client (@supabase/ssr createServerClient, async cookies(), session user)
 │       │   │   └── cookie-options.ts   Shared session cookie options (022): SameSite=Lax, Secure in prod, optional NEXT_PUBLIC_COOKIE_DOMAIN Domain
 │       │   ├── onboarding.ts       Pure derived state (024): onboardingStep (connect→reconnect→import→create→activate→waiting→live) + setupChecklist (done/current/pending + hrefs) — harness-tested, no React
+│       │   ├── analytics/
+│       │   │   └── range.ts         Task 027 range logic: presets (today/yesterday/7/30/90/custom), resolveRange (paired ISO, ≤366d, invalid → message), usableTz (Intl fallback), midnightOfKey fixed point, dayLabel — shared by dashboard + analytics + detail
 │       │   ├── profile/
 │       │   │   ├── countries.ts    Task 026: static ISO 3166 country list (code/name/dial) — no Intl at render time (hydration-safe)
 │       │   │   └── timezones.ts    Task 026: Intl.supportedValuesOf('timeZone') loaded client-side + label helper
@@ -227,7 +233,7 @@ smmomo/
   `apps/api/scripts/validate-tokens.ts` → Task 021 crypto + DB encryption checks.
   `apps/api/scripts/validate-delivery.ts` → Task 023 delivery harness (Graph contract, reclaim).
   `apps/api/scripts/validate-onboarding.ts` → Task 024 onboarding harness (sync + activation gates + web smokes).
-  `apps/api/scripts/validate-integration.ts` → Task 025 local integration harness (webhook E2E, duplicate safety, isolation, rate limits; run last).
+  `apps/api/scripts/validate-integration.ts` → Task 025+027 local integration harness (webhook E2E, duplicate safety, isolation, overview API + demo/simulator isolation checks, rate limits; run last).
   `apps/api/scripts/validate-account.mjs` → Task 026 account harness (avatar/workspace/profile/password/sessions/settings pages; avatar burst runs last — 60s per-IP cooldown).
   `apps/api/src/account.ts` → Task 026 avatar storage routes + workspace read/rename (caller-JWT storage calls; RLS is the path boundary).
   `docs/security.md` → Security model, residual risks, prod requirements, CSP inventory, token storage, origin/CORS/cookie model.

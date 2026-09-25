@@ -11,6 +11,7 @@
 // TEST_NONADMIN_* (isolation section skips without it).
 import { createHmac } from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 
 const API = "http://localhost:4000";
 const WEB = "http://localhost:3000";
@@ -498,7 +499,19 @@ async function main(): Promise<void> {
     const autos = await page("/automations");
     ok("automations page shows fixture", autos.status === 200 && autos.body.includes(automationName), String(autos.status));
     const inbox = await page("/inbox");
-    ok("inbox shows real comment", inbox.status === 200 && inbox.body.includes("it025_follower"), String(inbox.status));
+    ok(
+      "inbox shows real comment",
+      inbox.status === 200 && inbox.body.includes("it025_follower"),
+      inbox.status === 200 ? String(inbox.status) : `${inbox.status} ${inbox.body.slice(0, 500)}`,
+    );
+    if (inbox.status !== 200) {
+      try {
+        fs.writeFileSync(`${process.env.TEMP ?? "."}\\smmomo_inbox_500.html`, inbox.body);
+        console.log("INFO inbox 500 body saved to %TEMP%\\smmomo_inbox_500.html");
+      } catch {
+        /* best-effort */
+      }
+    }
     const dash = await page("/dashboard");
     ok("dashboard connected + fixture visible", dash.status === 200 && dash.body.includes("usage_probe"), String(dash.status));
     const analytics = await page("/analytics");
@@ -508,9 +521,170 @@ async function main(): Promise<void> {
       analytics.body.includes("Attempted = sent + delivered + failed"),
     );
     ok("analytics accepted-by-Instagram copy", analytics.body.includes("accepted by Instagram"));
+    const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+    const range90 = await page("/analytics?range=90d");
+    ok("analytics 90d range 200", range90.status === 200, String(range90.status));
+    const custom = await page(
+      `/analytics?range=custom&start=${isoDay(new Date(Date.now() - 10 * 86400000))}&end=${isoDay(new Date())}`,
+    );
+    ok("analytics custom range 200", custom.status === 200, String(custom.status));
+    const badRange = await page(
+      `/analytics?range=custom&start=${isoDay(new Date())}&end=${isoDay(new Date(Date.now() - 86400000))}`,
+    );
+    ok(
+      "analytics invalid range shows notice",
+      badRange.status === 200 && badRange.body.includes("Reset filters"),
+      String(badRange.status),
+    );
+    const autoFiltered = await page(`/analytics?automation=${fixtureAutoId}`);
+    ok("analytics automation filter 200", autoFiltered.status === 200, String(autoFiltered.status));
+    ok("dashboard demo island rendered", dash.body.includes("Interactive demo"));
   } else {
     console.log("SKIP UI smokes - Next dev server not reachable");
   }
+
+  // --- J. analytics overview + static demo isolation (Task 027) ------------
+  const jDay = (d: Date) => d.toISOString().slice(0, 10);
+  const ovQs = `start=${jDay(new Date(Date.now() - 30 * 86400000))}&end=${jDay(new Date(Date.now() + 86400000))}&tz=UTC`;
+  interface OvJson {
+    totals: { comments: number; matched: number; dmsSent: number; failed: number };
+    bucket: string;
+    series: { label: string; comments: number }[];
+    automations: { id: string; postId: string; matched: number }[];
+    content: { id: string; comments: number }[];
+    deliveryHealth: { queued: number; processing: number; sent: number; delivered: number; failed: number };
+    failures: { id: string }[];
+  }
+  const ov = await req(`${API}/analytics/overview?${ovQs}`, {
+    headers: { Cookie: admin.cookie },
+  });
+  ok("overview 200", ov.status === 200, String(ov.status));
+  const ovJson = ov.status === 200 ? (JSON.parse(ov.body) as OvJson) : null;
+  ok(
+    "overview response shape",
+    Boolean(
+      ovJson &&
+        ovJson.totals &&
+        Array.isArray(ovJson.series) &&
+        Array.isArray(ovJson.automations) &&
+        Array.isArray(ovJson.content) &&
+        ovJson.deliveryHealth &&
+        Array.isArray(ovJson.failures),
+    ),
+  );
+  ok(
+    "overview counts fixture comments in period",
+    (ovJson?.totals.comments ?? 0) >= 1,
+    String(ovJson?.totals.comments),
+  );
+  const ovAuto = ovJson?.automations.find((a) => a.id === fixtureAutoId);
+  ok(
+    "overview fixture automation matched >= 1",
+    Boolean(ovAuto) && (ovAuto?.matched ?? 0) >= 1,
+    String(ovAuto?.matched),
+  );
+  ok(
+    "overview daily bucket + non-empty series",
+    ovJson?.bucket === "day" && (ovJson?.series.length ?? 0) > 0,
+    `${ovJson?.bucket} n=${ovJson?.series.length}`,
+  );
+  ok(
+    "overview delivery health sent >= 1",
+    (ovJson?.deliveryHealth.sent ?? 0) >= 1,
+    String(ovJson?.deliveryHealth.sent),
+  );
+
+  const ovScope = await req(`${API}/analytics/overview?${ovQs}&automationId=${fixtureAutoId}`, {
+    headers: { Cookie: admin.cookie },
+  });
+  const scopeJson = ovScope.status === 200 ? (JSON.parse(ovScope.body) as OvJson) : null;
+  ok(
+    "overview automation scope → single fixture row",
+    ovScope.status === 200 &&
+      scopeJson?.automations.length === 1 &&
+      scopeJson.automations[0].id === fixtureAutoId,
+    `${ovScope.status} n=${scopeJson?.automations.length}`,
+  );
+  ok(
+    "overview automation scope totals == row matched",
+    (scopeJson?.totals.matched ?? -1) === (scopeJson?.automations[0]?.matched ?? -2),
+    `${scopeJson?.totals.matched} vs ${scopeJson?.automations[0]?.matched}`,
+  );
+  const ovPost = await req(`${API}/analytics/overview?${ovQs}&postId=${fixturePostId}`, {
+    headers: { Cookie: admin.cookie },
+  });
+  const postJson = ovPost.status === 200 ? (JSON.parse(ovPost.body) as OvJson) : null;
+  ok(
+    "overview post scope → only fixture content/automations",
+    ovPost.status === 200 &&
+      (postJson?.content.every((c) => c.id === fixturePostId) ?? false) &&
+      (postJson?.automations.every((a) => a.postId === fixturePostId) ?? false),
+    String(ovPost.status),
+  );
+
+  const ovBadTz = await req(`${API}/analytics/overview?${ovQs}&tz=Not/AZone`, {
+    headers: { Cookie: admin.cookie },
+  });
+  ok("overview invalid tz 400", ovBadTz.status === 400, String(ovBadTz.status));
+  const ovInv = await req(
+    `${API}/analytics/overview?start=${jDay(new Date())}&end=${jDay(new Date(Date.now() - 86400000))}`,
+    { headers: { Cookie: admin.cookie } },
+  );
+  ok("overview start >= end 400", ovInv.status === 400, String(ovInv.status));
+  const ovSpan = await req(`${API}/analytics/overview?start=2020-01-01&end=2026-01-01`, {
+    headers: { Cookie: admin.cookie },
+  });
+  ok("overview span > 366d 400", ovSpan.status === 400, String(ovSpan.status));
+  const ovPair = await req(`${API}/analytics/overview?start=${jDay(new Date())}`, {
+    headers: { Cookie: admin.cookie },
+  });
+  ok("overview unpaired start 400", ovPair.status === 400, String(ovPair.status));
+  const ovUuid = await req(`${API}/analytics/overview?${ovQs}&automationId=not-a-uuid`, {
+    headers: { Cookie: admin.cookie },
+  });
+  ok("overview non-uuid automationId 400", ovUuid.status === 400, String(ovUuid.status));
+  const ovUnknown = await req(
+    `${API}/analytics/overview?${ovQs}&automationId=00000000-0000-4000-8000-000000000000`,
+    { headers: { Cookie: admin.cookie } },
+  );
+  ok("overview unknown automationId 404", ovUnknown.status === 404, String(ovUnknown.status));
+  const ovAnon = await req(`${API}/analytics/overview?${ovQs}`);
+  ok("overview anonymous 401", ovAnon.status === 401, String(ovAnon.status));
+
+  if (NONADMIN_EMAIL && NONADMIN_PASSWORD) {
+    const nonOv = await login(NONADMIN_EMAIL, NONADMIN_PASSWORD);
+    const ovNon = await req(`${API}/analytics/overview?${ovQs}`, {
+      headers: { Cookie: nonOv.cookie },
+    });
+    ok(
+      "overview RLS: other workspace sees no fixtures",
+      ovNon.status === 200 &&
+        !ovNon.body.includes(fixtureAutoId) &&
+        !ovNon.body.includes(fixturePostId),
+      String(ovNon.status),
+    );
+  } else {
+    console.log("SKIP overview RLS (TEST_NONADMIN_* not set)");
+  }
+
+  // Static isolation: demo/simulator islands must never touch the data layer.
+  const noDataLayer = /fetch\(|lib\/api|request\(/;
+  let demoSrc = "";
+  let simSrc = "";
+  try {
+    demoSrc = fs.readFileSync(
+      path.join(__dirname, "../../web/app/(dashboard)/dashboard/demo.tsx"),
+      "utf8",
+    );
+    simSrc = fs.readFileSync(
+      path.join(__dirname, "../../web/app/(dashboard)/automations/new/simulator.tsx"),
+      "utf8",
+    );
+  } catch (e) {
+    console.log(`WARN static demo sources unreadable: ${String(e)}`);
+  }
+  ok("dashboard demo island has no data-layer calls", demoSrc !== "" && !noDataLayer.test(demoSrc));
+  ok("comment simulator has no data-layer calls", simSrc !== "" && !noDataLayer.test(simSrc));
 
   // --- I. rate limits (§14) — LAST: poisons per-IP window for ~60s ---------
   async function burst(name: string, send: () => Promise<number>, limit: number): Promise<void> {
@@ -569,6 +743,11 @@ async function main(): Promise<void> {
   console.log("INFO rate-limit windows are per-IP, in-process, ~60s — wait a minute before rerunning rate-limited harnesses.");
 
   // --- cleanup (best-effort) -----------------------------------------------
+  // SKIP_CLEANUP=1 keeps fixtures for debugging a failing check (delete them
+  // manually afterwards: ig_comment_id prefix it025 / name "It025 fixture").
+  if (process.env.SKIP_CLEANUP) {
+    console.log("INFO cleanup skipped (SKIP_CLEANUP set) — remove it025 fixtures manually");
+  } else {
   const cleanupIds = [c1, c2, c3, c4];
   const commentDbIds = [c1Row?.id, c2Row?.id, c3Row?.id, c4Row?.id].filter(Boolean) as string[];
   const deliveryIds = [...d1.map((d) => d.id), ...d3.map((d) => d.id), ...d4.map((d) => d.id)];
@@ -598,6 +777,7 @@ async function main(): Promise<void> {
     console.log("INFO cleanup done (fixtures removed)");
   } catch (e) {
     console.log(`WARN cleanup failed: ${String(e)}`);
+  }
   }
 
   console.log(`\nRESULT pass=${pass} fail=${fail}`);

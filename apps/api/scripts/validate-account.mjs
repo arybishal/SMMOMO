@@ -358,7 +358,9 @@ async function main() {
       );
 
       // Happy path depends on Supabase's free-tier email send quota —
-      // skip honestly when exhausted (never fake a pending state).
+      // skip honestly when exhausted (never fake a pending state). Observed
+      // exhaustions: 429 over_email_send_rate_limit, bare 429, and 400
+      // email_address_invalid (anti-abuse rejecting the target pattern).
       const newEmail = `validate-account-change-${stamp}@smmomo-test.com`;
       const change = await json(
         "PUT",
@@ -370,10 +372,14 @@ async function main() {
         pendingChangeExpected = true;
         ok("email change request -> 200", true);
       } else if (
-        change.status === 429 &&
-        /over_email_send_rate_limit/i.test(change.body)
+        change.status === 429 ||
+        (change.status === 400 && /email_address_invalid/i.test(change.body))
       ) {
-        ok("email change request", true, "SKIP (email send quota exhausted)");
+        ok(
+          "email change request",
+          true,
+          `SKIP (email send quota/policy exhausted: ${change.status} ${change.body.slice(0, 80)})`,
+        );
       } else {
         ok("email change request -> 200", false, `status=${change.status} ${change.body.slice(0, 160)}`);
       }

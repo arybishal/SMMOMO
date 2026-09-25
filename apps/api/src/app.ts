@@ -11,6 +11,7 @@ import { registerWebhookRoutes } from "./webhooks";
 import { registerAdminRoutes } from "./admin";
 import { registerContentSyncRoutes } from "./posts-sync";
 import { registerAccountRoutes } from "./account";
+import { registerAnalyticsRoutes } from "./analytics";
 import { getWorkspaceUsage, parseUsageRange } from "./usage";
 import { corsAllowlist, missingProductionConfig } from "./origins";
 
@@ -820,6 +821,7 @@ export async function buildApp() {
     username: string;
     text: string;
     matched: boolean;
+    automation_id: string | null;
     automation_name: string | null;
     created_at: string;
     post?: { caption: string } | { caption: string }[] | null | undefined;
@@ -838,7 +840,7 @@ export async function buildApp() {
   app.get("/comments/recent", async (req) => {
     const result = await rest<CommentRow[]>(
       authed(req),
-      "comments?select=id,post_id,username,text,matched,automation_name,created_at,post:posts(caption)&order=created_at.desc&limit=50",
+      "comments?select=id,post_id,username,text,matched,automation_id,automation_name,created_at,post:posts(caption)&order=created_at.desc&limit=50",
     );
     if (result.status >= 400) {
       throw Object.assign(new Error("failed to load comments"), {
@@ -852,6 +854,7 @@ export async function buildApp() {
       username: row.username,
       text: row.text,
       matched: row.matched,
+      automationId: row.automation_id ?? undefined,
       automationName: row.automation_name,
       createdAt: row.created_at,
     }));
@@ -893,6 +896,9 @@ export async function buildApp() {
 
   // Account settings: avatar storage + workspace info/rename (Task 026).
   registerAccountRoutes(app);
+
+  // Period-scoped analytics overview (Task 027).
+  registerAnalyticsRoutes(app);
 
   return app;
 }

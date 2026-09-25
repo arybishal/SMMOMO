@@ -13,7 +13,7 @@ import type {
   Post,
 } from "@/types";
 
-type OutcomeFilter = "all" | "sent" | "failed" | "ignored";
+export type OutcomeFilter = "all" | "sent" | "failed" | "ignored";
 
 const outcomeFilters: { value: OutcomeFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -110,16 +110,24 @@ export function InboxView({
   deliveries,
   automations,
   posts,
+  initialOutcome,
 }: {
   comments: CommentEvent[];
   deliveries: MessageDelivery[];
   automations: Automation[];
   posts: Post[];
+  /** Deep-link target (?outcome=failed from Analytics/Dashboard); raw string
+   *  from the URL — validated here against the island's own filter values. */
+  initialOutcome?: string;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     comments[0]?.id ?? null,
   );
-  const [outcome, setOutcome] = useState<OutcomeFilter>("all");
+  const [outcome, setOutcome] = useState<OutcomeFilter>(() =>
+    outcomeFilters.some((f) => f.value === initialOutcome)
+      ? (initialOutcome as OutcomeFilter)
+      : "all",
+  );
   const [postFilter, setPostFilter] = useState("all");
   const [query, setQuery] = useState("");
 

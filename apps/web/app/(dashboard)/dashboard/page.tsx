@@ -1,21 +1,24 @@
 import Link from "next/link";
-import { getAnalyticsSummary } from "@/lib/api/analytics";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { getInstagramAccount } from "@/lib/api/social-accounts";
 import { listRecentComments, listRecentDeliveries } from "@/lib/api/inbox";
 import { listAutomations } from "@/lib/api/automations";
 import { listPosts } from "@/lib/api/posts";
-import { getUsageSummary } from "@/lib/api/usage";
+import { getAnalyticsOverview } from "@/lib/api/analytics";
+import { resolveRange, usableTz } from "@/lib/analytics/range";
 import { onboardingStep, setupChecklist, type OnboardingStep } from "@/lib/onboarding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
-import {
-  IconArrowRight,
-  IconAutomation,
-  IconInstagram,
-} from "@/components/layout/icons";
-import type { CommentEvent, MessageDelivery } from "@/types";
+import { IconInstagram } from "@/components/layout/icons";
+import type { CommentEvent } from "@/types";
+import Demo from "./demo";
+
+// Task 027 — command-center Dashboard: status → flow → today → attention →
+// activity → education → actions (spec §3/§42). Every production number comes
+// from /analytics/overview (today, viewer tz), real records, or lifetime
+// automations state — demo values live only inside ./demo.tsx (spec §37).
 
 const deliveryTone = {
   delivered: "success",
@@ -25,45 +28,145 @@ const deliveryTone = {
   failed: "failed",
 } as const;
 
-const deliveryLabel: Record<MessageDelivery["status"], string> = {
-  queued: "Queued",
-  processing: "Processing",
-  sent: "Sent",
-  delivered: "Delivered",
-  failed: "Failed",
-};
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
 
 export default async function DashboardPage() {
-  const [stats, account, comments, deliveries, automations, usage, posts] =
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const profileName = str(meta.name);
+  const tz = usableTz(str(meta.timezone));
+
+  const today = resolveRange({ preset: "today", tz });
+  if (!today.ok) {
+    // Unreachable: preset "today" always resolves (tz falls back to UTC).
+    throw new Error(today.message);
+  }
+
+  const [account, automations, posts, overview, comments, deliveries] =
     await Promise.all([
-      getAnalyticsSummary(),
       getInstagramAccount(),
+      listAutomations(),
+      listPosts(),
+      getAnalyticsOverview({ start: today.start, end: today.end, tz }),
       listRecentComments(),
       listRecentDeliveries(),
-      listAutomations(),
-      getUsageSummary(),
-      listPosts(),
     ]);
 
   const connected = account?.status === "connected";
+  const accountError = Boolean(account) && !connected;
+  const totals = overview.totals;
+  const activeCount = automations.filter((a) => a.status === "active").length;
+  const pausedCount = automations.filter((a) => a.status === "paused").length;
+
   const step: OnboardingStep = onboardingStep({
     account: account ? account.status : "none",
     postCount: posts.length,
     automationCount: automations.length,
-    activeCount: automations.filter((a) => a.status === "active").length,
+    activeCount,
     hasActivity: comments.length > 0 || deliveries.length > 0,
   });
+
+  // Greeting from the profile timezone (spec §4) — no fake personalization.
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(new Date()),
+  );
+  const part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = profileName.split(/\s+/)[0] ?? "";
+  const greeting = firstName ? `${part}, ${firstName}` : "Welcome back";
+
+  // Attention items — only real issues (spec §8); onboarding covers the
+  // no-posts / no-automations cases via SetupCard.
+  const attention: { title: string; body: string; cta: string; href: string }[] = [];
+  if (accountError) {
+    attention.push({
+      title: "Instagram connection requires attention",
+      body: "Reconnect your Instagram account to continue receiving comments.",
+      cta: "Reconnect",
+      href: "/settings/social-accounts",
+    });
+  }
+  if (totals.failed > 0) {
+    attention.push({
+      title: `${totals.failed} ${totals.failed === 1 ? "delivery" : "deliveries"} failed`,
+      body: "Review the failed deliveries.",
+      cta: "View failures",
+      href: "/inbox?outcome=failed",
+    });
+  }
+
+  // Recent activity — matched comments + real delivery outcomes, newest first.
+  const feed = [
+    ...comments
+      .filter((c) => c.matched)
+      .map((c) => ({
+        id: `c-${c.id}`,
+        at: c.createdAt,
+        label: "Comment matched",
+        detail: `@${c.username} — “${c.text}”`,
+        sub: c.automationName ?? "Automation",
+        badge: "Matched",
+        tone: "neutral" as const,
+      })),
+    ...deliveries.map((d) => ({
+      id: `d-${d.id}`,
+      at: d.createdAt,
+      label: `${d.kind === "private_dm" ? "Private DM" : "Public reply"} ${
+        d.status === "delivered" || d.status === "sent" ? "sent" : d.status
+      }`,
+      detail: `@${d.recipient}`,
+      sub: d.error
+        ? `${commentAutomation(comments, d.commentId)} — ${d.error}`
+        : commentAutomation(comments, d.commentId),
+      badge:
+        d.status === "delivered"
+          ? "Delivered"
+          : d.status === "sent"
+            ? "Sent"
+            : d.status === "queued"
+              ? "Queued"
+              : d.status === "processing"
+                ? "Processing"
+                : "Failed",
+      tone: deliveryTone[d.status],
+    })),
+  ]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 8);
+
+  const flowEmpty = totals.comments === 0;
+  const matchRate =
+    totals.comments > 0 ? (totals.matched / totals.comments) * 100 : null;
+  const acceptance =
+    totals.matched > 0 ? (totals.dmsSent / totals.matched) * 100 : null;
+
+  const primaryAction = !account
+    ? { label: "Connect Instagram", href: "/settings/social-accounts" }
+    : accountError
+      ? { label: "Reconnect", href: "/settings/social-accounts" }
+      : posts.length === 0
+        ? { label: "Sync posts", href: "/posts" }
+        : { label: "Create automation", href: "/automations/new" };
 
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Dashboard"
-        description="Your Instagram comment automations at a glance."
+        title={greeting}
+        description="Here's what's happening with your automations today."
         action={
-          <Link href="/automations/new" className={buttonClasses("primary")}>
-            New automation
-            <IconArrowRight className="h-4 w-4" />
-          </Link>
+          posts.length > 0 && account && !accountError ? (
+            <Link href="/automations/new" className={buttonClasses("primary")}>
+              Create automation
+            </Link>
+          ) : undefined
         }
       />
 
@@ -118,11 +221,7 @@ export default async function DashboardPage() {
               : `${buttonClasses("secondary")} shrink-0`
           }
         >
-          {connected
-            ? "Manage"
-            : account
-              ? "Reconnect"
-              : "Connect Instagram"}
+          {connected ? "Manage" : account ? "Reconnect" : "Connect Instagram"}
         </Link>
       </Card>
 
@@ -132,156 +231,123 @@ export default async function DashboardPage() {
         <SetupCard step={step} />
       )}
 
-      {/* Primary metrics — deliberately weighted, not a wall of equal cards.
-          No period label: AnalyticsSummary has no period field (not fabricated). */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric
-          label="Comments matched"
-          value={stats.commentsMatched.toLocaleString()}
-          emphasis
-        />
-        <Metric label="DMs sent" value={stats.dmsSent.toLocaleString()} />
-        <Metric
-          label="Failed deliveries"
-          value={stats.failedDeliveries.toLocaleString()}
-          danger={stats.failedDeliveries > 0}
-        />
-        <Metric
-          label="Active automations"
-          value={`${stats.activeAutomations} / ${automations.length}`}
-        />
-      </div>
-
-      {/* Usage snapshot — period comes from the UsageSummary contract */}
-      <Card className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3.5">
-        <span className="text-sm font-semibold text-foreground">
-          Usage · {usage.period}
-        </span>
-        <Stat value={usage.dmsSent} label="DMs sent" />
-        <Stat value={usage.commentsProcessed} label="comments processed" />
-        <Stat value={usage.publicReplies} label="public replies" />
-        <Stat
-          value={usage.failedDeliveries}
-          label="failed"
-          danger={usage.failedDeliveries > 0}
-        />
-        <Link
-          href="/settings/usage"
-          className="ml-auto text-xs font-medium text-primary hover:text-primary-hover"
-        >
-          Details
-        </Link>
+      {/* Automation flow — the product's core loop with today's real numbers
+          (spec §6 + §10). Stage 2 has no number: keyword detection and the
+          match claim are one event, counting both would double-count. */}
+      <Card className="mt-6 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>Your automation flow</CardTitle>
+          <span className="text-xs text-subtle-foreground">Today</span>
+        </div>
+        {flowEmpty ? (
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium text-foreground">No activity yet</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+              Your automation flow will appear here once comments start arriving.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ol className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <FlowStage value={totals.comments.toLocaleString()} label="Comments" />
+              <FlowStage label="Keyword detected" />
+              <FlowStage value={totals.matched.toLocaleString()} label="Matched" />
+              <FlowStage value={totals.dmsSent.toLocaleString()} label="DMs sent" />
+            </ol>
+            {(matchRate !== null || acceptance !== null) && (
+              <p className="mt-4 text-xs text-subtle-foreground">
+                {[
+                  matchRate !== null ? `${matchRate.toFixed(1)}% match rate` : null,
+                  acceptance !== null
+                    ? `${acceptance.toFixed(1)}% delivery acceptance rate`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+          </>
+        )}
       </Card>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-5">
-        {/* Recent comment activity — state includes delivery outcome */}
-        <Card className="lg:col-span-3">
-          <div className="flex items-center justify-between border-b border-border-muted px-5 py-4">
-            <CardTitle>Recent comment activity</CardTitle>
-            <Link
-              href="/inbox"
-              className="text-xs font-medium text-primary hover:text-primary-hover"
-            >
-              View inbox
-            </Link>
+      {/* Today's activity + Automation health (spec §7/§19) */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Today&apos;s activity</CardTitle>
+            <span className="text-xs text-subtle-foreground">{today.label}</span>
           </div>
-          {comments.length === 0 ? (
-            <EmptyState
-              text="No recent comments. Comments on your posts will appear here."
-              ctaLabel="Create automation"
-              ctaHref="/automations/new"
-            />
-          ) : (
-            <ul className="divide-y divide-border-muted">
-              {comments.slice(0, 5).map((c) => {
-                const state = commentState(c, deliveries);
-                return (
-                  <li key={c.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-foreground">
-                        <span className="font-medium">@{c.username}</span>{" "}
-                        <span className="text-muted-foreground">— “{c.text}”</span>
-                      </p>
-                      <p className="truncate text-xs text-subtle-foreground">
-                        {c.automationName
-                          ? `Matched: ${c.automationName}`
-                          : "No automation matched"}
-                      </p>
-                    </div>
-                    <Badge tone={state.tone}>{state.label}</Badge>
-                    <time
-                      dateTime={c.createdAt}
-                      className="hidden shrink-0 text-xs text-subtle-foreground sm:block"
-                    >
-                      {relativeTime(c.createdAt)}
-                    </time>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <dl className="mt-4 grid grid-cols-2 gap-4">
+            <TodayStat label="Comments" value={totals.comments} />
+            <TodayStat label="Matched" value={totals.matched} />
+            <TodayStat label="DMs sent" value={totals.dmsSent} />
+            <TodayStat label="Failed" value={totals.failed} danger={totals.failed > 0} />
+          </dl>
         </Card>
 
-        {/* Automations */}
-        <Card className="lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-border-muted px-5 py-4">
-            <CardTitle>Automations</CardTitle>
-            {automations.length > 0 && (
-              <Link
-                href="/automations"
-                className="text-xs font-medium text-primary hover:text-primary-hover"
-              >
-                View all
-              </Link>
-            )}
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Automation health</CardTitle>
+            <Link
+              href="/automations"
+              className="text-xs font-medium text-primary hover:text-primary-hover"
+            >
+              Manage automations
+            </Link>
           </div>
-          {automations.length === 0 ? (
-            <EmptyState
-              text="No automations yet. Create one to start replying with DMs when followers comment your keyword."
-              ctaLabel="Create automation"
-              ctaHref="/automations/new"
-              ctaVariant="primary"
+          <p className="mt-3 flex items-center gap-2 text-sm font-medium text-foreground">
+            <span
+              aria-hidden="true"
+              className={`h-2.5 w-2.5 rounded-pill ${
+                accountError || totals.failed > 0 ? "bg-danger" : "bg-success"
+              }`}
             />
-          ) : (
-            <ul className="divide-y divide-border-muted">
-              {automations.map((a) => (
-                <li key={a.id} className="flex items-center gap-3 px-5 py-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
-                    <IconAutomation className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/automations/${a.id}`}
-                      className="block truncate text-sm font-medium text-foreground hover:text-primary"
-                    >
-                      {a.name}
-                    </Link>
-                    <p className="truncate text-xs text-subtle-foreground">
-                      Keyword “{a.keyword}” · {a.dmSentCount} DMs
-                    </p>
-                  </div>
-                  <Badge
-                    tone={
-                      a.status === "active"
-                        ? "success"
-                        : a.status === "paused"
-                          ? "paused"
-                          : "draft"
-                    }
-                  >
-                    {a.status}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
+            {accountError || totals.failed > 0
+              ? "Attention needed"
+              : "All systems healthy"}
+          </p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <HealthRow label="Active" value={`${activeCount} of ${automations.length}`} />
+            <HealthRow label="Paused" value={`${pausedCount}`} />
+            <HealthRow
+              label="Failed today"
+              value={`${totals.failed}`}
+              danger={totals.failed > 0}
+            />
+            <HealthRow
+              label="Instagram"
+              value={connected ? "Connected" : account ? "Needs attention" : "Not connected"}
+              danger={accountError}
+            />
+          </dl>
         </Card>
       </div>
 
-      {/* Recent deliveries — DM / reply outcomes, automation joined via comment */}
+      {/* Needs Attention — rendered only when real issues exist (spec §8) */}
+      {attention.length > 0 && (
+        <Card className="mt-6 border-danger/30 p-5">
+          <CardTitle>Needs attention</CardTitle>
+          <ul className="mt-3 space-y-4">
+            {attention.map((item) => (
+              <li key={item.title} className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  <p className="text-sm text-muted-foreground">{item.body}</p>
+                </div>
+                <Link href={item.href} className={buttonClasses("secondary")}>
+                  {item.cta}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* Recent activity — real records only, labeled "Recent activity"
+          (never "Live Activity" — no realtime subscription, spec §9). */}
       <Card className="mt-6">
         <div className="flex items-center justify-between border-b border-border-muted px-5 py-4">
-          <CardTitle>Recent deliveries</CardTitle>
+          <CardTitle>Recent activity</CardTitle>
           <Link
             href="/inbox"
             className="text-xs font-medium text-primary hover:text-primary-hover"
@@ -289,103 +355,104 @@ export default async function DashboardPage() {
             View inbox
           </Link>
         </div>
-        {deliveries.length === 0 ? (
+        {feed.length === 0 ? (
           <EmptyState
-            text="No delivery activity yet. DMs and replies will appear here after a keyword match."
+            text="No recent activity. Matched comments and delivery outcomes will appear here."
             ctaLabel="Create automation"
             ctaHref="/automations/new"
           />
         ) : (
           <ul className="divide-y divide-border-muted">
-            {deliveries.slice(0, 4).map((d) => {
-              const comment = comments.find((c) => c.id === d.commentId);
-              return (
-                <li key={d.id} className="flex items-center gap-3 px-5 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-foreground">
-                      <span className="font-medium">@{d.recipient}</span>{" "}
-                      <span className="text-muted-foreground">
-                        — {d.kind === "private_dm" ? "Private DM" : "Public reply"}
-                      </span>
-                    </p>
-                    <p className="truncate text-xs text-subtle-foreground">
-                      {d.error ??
-                        (comment?.automationName
-                          ? comment.automationName
-                          : "Automation unknown")}
-                    </p>
-                  </div>
-                  <Badge tone={deliveryTone[d.status]}>
-                    {deliveryLabel[d.status]}
-                  </Badge>
-                  <time
-                    dateTime={d.createdAt}
-                    className="hidden shrink-0 text-xs text-subtle-foreground sm:block"
-                  >
-                    {relativeTime(d.createdAt)}
-                  </time>
-                </li>
-              );
-            })}
+            {feed.map((item) => (
+              <li key={item.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-foreground">
+                    <span className="font-medium">{item.label}</span>{" "}
+                    <span className="text-muted-foreground">— {item.detail}</span>
+                  </p>
+                  <p className="truncate text-xs text-subtle-foreground">{item.sub}</p>
+                </div>
+                <Badge tone={item.tone}>{item.badge}</Badge>
+                <time
+                  dateTime={item.at}
+                  className="hidden shrink-0 text-xs text-subtle-foreground sm:block"
+                >
+                  {relativeTime(item.at)}
+                </time>
+              </li>
+            ))}
           </ul>
         )}
+      </Card>
+
+      {/* Interactive demo — client island, demo data never leaves it (§12–§17). */}
+      <Demo />
+
+      {/* Quick actions — contextual, never offering an action that cannot work
+          (spec §11). */}
+      <Card className="mt-6 p-5">
+        <CardTitle>Quick actions</CardTitle>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <Link href={primaryAction.href} className={buttonClasses("primary")}>
+            {primaryAction.label}
+          </Link>
+          <Link href="/inbox" className={buttonClasses("secondary")}>
+            View inbox
+          </Link>
+        </div>
       </Card>
     </div>
   );
 }
 
-function Metric({
-  label,
-  value,
-  emphasis = false,
-  danger = false,
-}: {
-  label: string;
-  value: string;
-  emphasis?: boolean;
-  danger?: boolean;
-}) {
+function FlowStage({ value, label }: { value?: string; label: string }) {
   return (
-    <Card className={`p-5 ${emphasis ? "border-indigo-200 bg-primary-soft/40" : ""}`}>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
+    <li className="rounded-control border border-border-muted bg-surface p-4 text-center">
+      <p className="min-h-[2rem] text-2xl font-semibold tabular-nums text-foreground">
+        {value ?? <span aria-hidden="true" className="text-subtle-foreground">·</span>}
       </p>
-      <p
-        className={`mt-2 font-semibold tabular-nums ${
-          emphasis
-            ? "text-3xl text-primary-strong"
-            : danger
-              ? "text-2xl text-danger"
-              : "text-2xl text-foreground"
-        }`}
-      >
-        {value}
-      </p>
-      {danger && (
-        <p className="mt-1 text-xs text-danger-strong">Needs attention</p>
-      )}
-    </Card>
+      <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+    </li>
   );
 }
 
-function Stat({
-  value,
+function TodayStat({
   label,
+  value,
   danger = false,
 }: {
-  value: number;
   label: string;
+  value: number;
   danger?: boolean;
 }) {
   return (
-    <span className="text-xs text-muted-foreground">
-      <span
-        className={`font-semibold tabular-nums ${danger ? "text-danger" : "text-foreground"}`}
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        className={`mt-1 text-2xl font-semibold tabular-nums ${
+          danger ? "text-danger" : "text-foreground"
+        }`}
       >
         {value.toLocaleString()}
-      </span>{" "}
-      {label}
-    </span>
+      </dd>
+    </div>
+  );
+}
+
+function HealthRow({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 border-b border-border-muted pb-1.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={`text-sm font-semibold tabular-nums ${
+          danger ? "text-danger" : "text-foreground"
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
@@ -393,18 +460,16 @@ function EmptyState({
   text,
   ctaLabel,
   ctaHref,
-  ctaVariant = "secondary",
 }: {
   text: string;
   ctaLabel?: string;
   ctaHref?: string;
-  ctaVariant?: "primary" | "secondary";
 }) {
   return (
     <div className="px-5 py-8 text-center">
       <p className="mx-auto max-w-sm text-sm text-muted-foreground">{text}</p>
       {ctaLabel && ctaHref && (
-        <Link href={ctaHref} className={`${buttonClasses(ctaVariant)} mt-4`}>
+        <Link href={ctaHref} className={`${buttonClasses("secondary")} mt-4`}>
           {ctaLabel}
         </Link>
       )}
@@ -412,9 +477,11 @@ function EmptyState({
   );
 }
 
+function commentAutomation(comments: CommentEvent[], commentId: string): string {
+  return comments.find((c) => c.id === commentId)?.automationName ?? "Automation unknown";
+}
+
 // First-run checklist (Task 024) — pure derived state from lib/onboarding.
-// One current step, one CTA; done steps stay visible so progress reads at a
-// glance. `waiting` = active + no activity yet (honest live state, no CTA).
 function SetupCard({ step }: { step: OnboardingStep }) {
   const items = setupChecklist(step);
   const current = items.find((i) => i.state === "current");
@@ -473,22 +540,6 @@ function SetupCard({ step }: { step: OnboardingStep }) {
       )}
     </Card>
   );
-}
-
-// Outcome badge for a comment: Ignored / Failed / DM sent / Queued / Matched.
-// Delivery looked up by commentId — no invented fields on either type.
-function commentState(c: CommentEvent, deliveries: MessageDelivery[]) {
-  if (!c.matched) return { tone: "neutral" as const, label: "Ignored" };
-  const dm = deliveries.find(
-    (d) => d.commentId === c.id && d.kind === "private_dm",
-  );
-  if (dm?.status === "failed") return { tone: "failed" as const, label: "Failed" };
-  if (dm?.status === "delivered" || dm?.status === "sent")
-    return { tone: "success" as const, label: "DM sent" };
-  if (dm?.status === "queued") return { tone: "draft" as const, label: "Queued" };
-  if (dm?.status === "processing")
-    return { tone: "info" as const, label: "Processing" };
-  return { tone: "info" as const, label: "Matched" };
 }
 
 function relativeTime(iso: string): string {

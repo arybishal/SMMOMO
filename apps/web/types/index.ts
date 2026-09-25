@@ -55,6 +55,8 @@ export interface CommentEvent {
   text: string;
   matched: boolean;
   automationName: string | null;
+  /** Winning automation (present when matched; omitted by mock rows). */
+  automationId?: string;
   createdAt: string;
 }
 
@@ -81,6 +83,90 @@ export interface AnalyticsSummary {
   failedDeliveries: number;
   activeAutomations: number;
   daily: AnalyticsPoint[];
+}
+
+// Task 027 — GET /analytics/overview (period-scoped, server-aggregated).
+export interface AnalyticsRange {
+  start: string;
+  end: string;
+  previousStart: string;
+  previousEnd: string;
+  tz: string;
+}
+
+export interface AnalyticsTotals {
+  comments: number;
+  matched: number;
+  dmsSent: number;
+  failed: number;
+}
+
+export interface AnalyticsSeriesPoint {
+  key: string;
+  label: string;
+  comments: number;
+  matched: number;
+  dms: number;
+  failed: number;
+}
+
+export interface AutomationPeriodStats {
+  id: string;
+  name: string;
+  status: AutomationStatus;
+  keyword: string;
+  postId: string;
+  comments: number;
+  matched: number;
+  dmsSent: number;
+  failed: number;
+  /** matched ÷ comments on its post; null when there were no comments. */
+  matchRate: number | null;
+}
+
+export interface ContentPeriodStats {
+  id: string;
+  caption: string;
+  type: InstagramMediaType;
+  mediaUrl: string | null;
+  permalink: string;
+  comments: number;
+  matched: number;
+  dmsSent: number;
+  failed: number;
+}
+
+export interface DeliveryHealth {
+  queued: number;
+  processing: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+}
+
+export interface AnalyticsFailure {
+  id: string;
+  createdAt: string;
+  error: string | null;
+  recipient: string;
+  kind: "private_dm" | "public_reply";
+  automationName: string | null;
+  username: string | null;
+  text: string | null;
+  postId: string | null;
+}
+
+export interface AnalyticsOverview {
+  range: AnalyticsRange;
+  totals: AnalyticsTotals;
+  previous: AnalyticsTotals;
+  bucket: "hour" | "day";
+  series: AnalyticsSeriesPoint[];
+  automations: AutomationPeriodStats[];
+  content: ContentPeriodStats[];
+  deliveryHealth: DeliveryHealth;
+  failures: AnalyticsFailure[];
+  truncated: boolean;
 }
 
 export interface UsageSummary {

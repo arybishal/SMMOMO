@@ -9,8 +9,16 @@ import { InboxView } from "./inbox";
 
 // Server page: loads everything through lib/api (mock seam — Task 008 stays
 // UI-only), then delegates selection/search/filter to a client island — same
-// architecture as Task 005/007.
-export default async function InboxPage() {
+// architecture as Task 005/007. ?outcome= (Task 027) passes through raw and
+// is validated inside the island — a runtime const from a "use client"
+// module can't be used as a value here (RSC proxy, not the array).
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ outcome?: string }>;
+}) {
+  const params = await searchParams;
+
   const [comments, deliveries, automations, posts] = await Promise.all([
     listRecentComments(),
     listRecentDeliveries(),
@@ -47,6 +55,7 @@ export default async function InboxPage() {
           deliveries={deliveries}
           automations={automations}
           posts={posts}
+          initialOutcome={params.outcome}
         />
       )}
     </div>

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { createAutomation, updateAutomation } from "@/lib/api/automations";
+import { Simulator } from "./simulator";
 import type { Automation, Post } from "@/types";
 
 type Field = "post" | "keyword" | "dm" | "reply";
@@ -302,7 +303,9 @@ export function AutomationBuilder({
         </p>
       </form>
 
-      {/* Live preview — what the follower sees */}
+      {/* Live preview + local simulator — form state flows in as props; the
+          simulator runs the engine's match rule entirely client-side. */}
+      <div className="space-y-6">
       <Card className="p-6">
         <h2 className="text-sm font-semibold text-foreground">Preview</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -367,6 +370,9 @@ export function AutomationBuilder({
           </p>
         )}
       </Card>
+
+      <Simulator keyword={keyword} dm={dm} />
+      </div>
     </div>
   );
 }

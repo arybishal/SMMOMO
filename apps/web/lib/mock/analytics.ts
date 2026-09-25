@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, UsageSummary } from "@/types";
+import type { AnalyticsOverview, AnalyticsSummary, UsageSummary } from "@/types";
 
 export const mockAnalytics: AnalyticsSummary = {
   commentsMatched: 619,
@@ -23,4 +23,25 @@ export const mockUsage: UsageSummary = {
   commentsProcessed: 1842,
   publicReplies: 198,
   failedDeliveries: 8,
+};
+
+// Zeroed shape for /analytics/overview — mock mode shows empty periods,
+// never invented activity.
+export const mockOverview: AnalyticsOverview = {
+  range: {
+    start: "2026-09-01T00:00:00.000Z",
+    end: "2026-10-01T00:00:00.000Z",
+    previousStart: "2026-08-02T00:00:00.000Z",
+    previousEnd: "2026-09-01T00:00:00.000Z",
+    tz: "UTC",
+  },
+  totals: { comments: 0, matched: 0, dmsSent: 0, failed: 0 },
+  previous: { comments: 0, matched: 0, dmsSent: 0, failed: 0 },
+  bucket: "day",
+  series: [],
+  automations: [],
+  content: [],
+  deliveryHealth: { queued: 0, processing: 0, sent: 0, delivered: 0, failed: 0 },
+  failures: [],
+  truncated: false,
 };
