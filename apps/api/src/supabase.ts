@@ -3,10 +3,10 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 // Public project config — same values documented in the repo's .env.example.
 // Product routes: end-user JWTs + RLS. Webhook path (016) only: service_role
 // from API env (session/process env, never apps/web, never a committed file).
-const SUPABASE_URL =
+export const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
   "https://etwuqthopqrzffdgvhqs.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY =
+export const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "sb_publishable_ptMvNEqjdAJoPys6NbpleA_Yu0swj50";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";

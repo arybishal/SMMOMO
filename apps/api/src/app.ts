@@ -10,6 +10,7 @@ import { registerMetaRoutes } from "./meta";
 import { registerWebhookRoutes } from "./webhooks";
 import { registerAdminRoutes } from "./admin";
 import { registerContentSyncRoutes } from "./posts-sync";
+import { registerAccountRoutes } from "./account";
 import { getWorkspaceUsage, parseUsageRange } from "./usage";
 import { corsAllowlist, missingProductionConfig } from "./origins";
 
@@ -366,6 +367,14 @@ export async function buildApp() {
     windowMs: 60_000,
     match: (path, method) =>
       path === "/social-accounts/instagram/sync" && method === "POST",
+    keys: (req) => req.ip,
+  });
+  // Avatar writes cost storage + CPU (base64 decode) — small per-IP budget.
+  rateLimit(app, {
+    max: 10,
+    windowMs: 60_000,
+    match: (path, method) =>
+      path === "/account/avatar" && (method === "POST" || method === "DELETE"),
     keys: (req) => req.ip,
   });
 
@@ -881,6 +890,9 @@ export async function buildApp() {
   // Platform admin: Meta app credentials (Task 018A). Session preHandler runs;
   // platform-admin email gate is inside these handlers.
   registerAdminRoutes(app);
+
+  // Account settings: avatar storage + workspace info/rename (Task 026).
+  registerAccountRoutes(app);
 
   return app;
 }

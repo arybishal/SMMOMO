@@ -261,6 +261,7 @@ cp .env.example .env
 | — | — | E2E delivery (Task 023): Graph client in `apps/api/src/meta-client.ts`; harness `npx tsx apps/api/scripts/validate-delivery.ts` (45 checks); status machine includes `processing` |
 | — | — | Onboarding + first automation (Task 024): real content import `POST /social-accounts/instagram/sync` (unique `posts(workspace_id, ig_media_id)` upsert, IMAGE/REEL/CAROUSEL only, 10/min/IP); server activation gate (`checkActivation` on create/activate — client can never self-authorize `status=active`); derived checklist UI + topbar connect/reconnect pill; harness `npx tsx apps/api/scripts/validate-onboarding.ts` (46 checks) |
 | — | — | Live Meta validation (Task 025): local integration harness `npx tsx apps/api/scripts/validate-integration.ts` (67 checks — redirect single source, webhook E2E + duplicate replay, non-match, case-insensitive, workspace isolation, reconnect UI, rate limits); **live Meta run BLOCKED** pending a real Meta app, public HTTPS origin, and Instagram Professional accounts (see TASK.md Task 025) |
+| — | — | Settings & Profile (Task 026): grouped Settings nav + Profile/Security/Workspace/Notifications pages; avatar upload to the `avatars` public bucket (owner-folder storage RLS, magic-byte sniff, 2MB cap, 10/min/IP); workspace rename (owner/admin, RLS defense in depth); profile fields in Auth `user_metadata` (no profiles table); password change + `signOut({scope:'others'})` sessions on Security; harness `node apps/api/scripts/validate-account.mjs` (51 checks) |
 
 Database migrations live in `supabase/migrations/` (Supabase CLI workflow:
 `npx supabase link --project-ref <ref>` then `npx supabase db push`, or run a
@@ -306,6 +307,6 @@ All values are Tailwind v4 oklch defaults, copied 1:1 from `tailwindcss/theme.cs
 | **Phase 1: Frontend Foundation** | ✅ Complete | All V1 screens on mocks (Tasks 001–010) |
 | **Phase 2: Backend & Database** | ✅ Complete | Fastify + schema + engine + delivery worker (Tasks 011–023) |
 | **Phase 3: Meta API Integration** | 🟡 In Progress | Webhooks + OAuth + Graph DM dispatch shipped (015–018, 023); live Meta app not proven in this environment |
-| **Phase 4: Production Readiness** | 🟡 In Progress | Security/origins/token hardening (020–022) + production onboarding & first automation (024) shipped; Docker/monitoring pending |
+| **Phase 4: Production Readiness** | 🟡 In Progress | Security/origins/token hardening (020–022), production onboarding & first automation (024), and Settings & Profile redesign (026) shipped; Docker/monitoring pending |
 
 For real-time progress and the current sprint backlog, consult **[`TASK.md`](TASK.md)**.

@@ -85,6 +85,14 @@ Each path does its own workspace/validation lookups because RLS is bypassed.
 - `automations` → `posts` is a **composite FK** on `(workspace_id, post_id)` (migration `20260924000000`) so a member cannot bind an automation to another workspace's post; `ON DELETE CASCADE` is intentional (automation never exists without its post; disconnect cascade removes posts → automations).
 - Unique `(workspace_id, platform)` on `social_accounts` — one Instagram connection per workspace.
 
+## Avatar storage & profile settings (Task 026)
+
+- Avatars live in the **public** `avatars` bucket (display images are public by design); the object key is always `{uid}/avatar.{jpg|png|webp}`.
+- `storage.objects` policies (migrations `20260925120000` + `20260925130000`): authenticated INSERT/UPDATE/DELETE with `bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text` — a crafted path can never land in another user's folder; authenticated SELECT is required because storage uploads run `INSERT .. RETURNING *` (without it the whole upload fails with a misleading RLS error); anonymous **listing** denied (public bucket reads only via known URLs).
+- API (`apps/api/src/account.ts`): routes sit behind the session preHandler; upload validates base64 + magic bytes + 2MB before touching storage; DELETE re-validates shape + owner prefix and calls storage with the **caller's own JWT** (RLS is the boundary — the string check is just early rejection). Idempotent delete: storage reports missing objects as HTTP 400 with `"statusCode":"404"`, treated as success.
+- Profile fields (name/country/timezone/phone) are Supabase Auth `user_metadata` — no profiles table, no new RLS surface. Email change and password change go through Supabase Auth endpoints; session revocation uses `signOut({ scope: 'others' })`.
+- Harness: `node apps/api/scripts/validate-account.mjs` (51 checks) — unauth 401s, 400 validation matrix, owner-scoped paths, cross-user rejection, workspace role gate, settings pages/nav, 429 burst, leak scan.
+
 ## Webhook verification
 
 - `GET /webhooks/instagram`: timing-safe compare of `hub.verify_token` vs resolved config; challenge echoed as `text/plain`.
@@ -151,7 +159,7 @@ Adding a third-party script/CDN requires updating `next.config.ts` and this tabl
 
 ## Rate limiting status
 
-- In-process fixed-window limiter on `POST /webhooks/*` (60/min/IP), non-GET `/admin/*` (30/min/IP), Instagram OAuth connect/callback (20/min/IP), and `POST /social-accounts/instagram/sync` (10/min/IP, Task 024). Map key cap 10,000 (clear-on-full) to bound memory.
+- In-process fixed-window limiter on `POST /webhooks/*` (60/min/IP), non-GET `/admin/*` (30/min/IP), Instagram OAuth connect/callback (20/min/IP), `POST /social-accounts/instagram/sync` (10/min/IP, Task 024), and `POST|DELETE /account/avatar` (10/min/IP, Task 026). Map key cap 10,000 (clear-on-full) to bound memory.
 - Login/signup rate limits are Supabase Auth–side (hosted defaults).
 - **Production multi-instance:** the in-process limiter is per-process — use a shared store (Redis / edge WAF) when scaling horizontally. Redis stays reserved-only in `.env.example` until multi-instance is real.
 

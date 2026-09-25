@@ -6,15 +6,58 @@ Status: IN DEVELOPMENT
 
 Current Phase: Production Readiness
 
-Current Task: Task 025 - Live Meta Integration Verification & Production Delivery Validation (BLOCKED on live Meta — local validation PASS)
+Current Task: Task 026 - Settings & Profile Redesign (COMPLETE)
 
-Last Completed Task: Task 024 - Production Onboarding + First Automation Experience
+Last Completed Task: Task 026 - Settings & Profile Redesign
 
-Next Task: Task 025 (resume when live Meta dependencies are available; then set next)
+Next Task: Task 027 (TBD); Task 025 remains BLOCKED — resume when live Meta dependencies are available
 
-Last Updated: 2026-09-25 (Task 025)
+Last Updated: 2026-09-25 (Task 026)
 
-Verification: 2026-09-25 Task 025 LOCAL validation PASSED / LIVE Meta
+Verification: 2026-09-25 Task 026 validation PASSED — typecheck/lint/
+build:api/build:web exit 0; migrations `20260925120000_account_profile_
+settings.sql` + `20260925130000_avatar_read_policy.sql` APPLIED via
+`supabase db push` (avatars public bucket; storage.objects policies:
+authenticated insert/update/delete scoped to
+`(storage.foldername(name))[1] = auth.uid()::text`, authenticated select —
+Supabase uploads run `INSERT .. RETURNING *`, so a missing SELECT policy
+fails with a misleading RLS error — anonymous listing denied;
+`is_workspace_admin()` SECURITY DEFINER; `admins_rename_workspace` UPDATE
+policy); `apps/api/src/account.ts` POST/DELETE `/account/avatar` (per-route
+4MB bodyLimit, base64 JSON, magic-byte sniff jpg/png/webp, 2MB cap,
+`{uid}/avatar.{ext}` path, caller-JWT storage calls, idempotent delete
+treats storage HTTP 400 + `"statusCode":"404"` as success) and GET/PATCH
+`/workspace` (reverse-embed members → role/memberCount, owner/admin rename
+gate) behind the session preHandler; avatar rate limit 10/min/IP (app.ts);
+web: grouped Settings nav (desktop groups / mobile pill row, server-side
+admin gate for Integrations), `/settings` hub → `/settings/account`
+redirect, Profile page (avatar upload/remove via blob URL; name/country/
+timezone/phone_cc/phone_number persisted in Auth `user_metadata` — no
+profiles table; static ISO country list, timezone list loaded client-side
+to avoid hydration mismatch, native selects), Security page (password
+change with strength meter + current-password check, sessions card via
+`signOut({scope:'others'})`, 2FA + delete-account honest "Coming soon"
+placeholders), Workspace page (read + rename), Notifications placeholder;
+old `account-form.tsx` deleted (password → Security, name → Profile); new
+`apps/api/scripts/validate-account.mjs` **51/51 PASS** (unauth 401 matrix,
+400 validation matrix, upload → public URL → owner-scoped path, cross-user
+delete/write rejected, workspace shape/rename/restore/role, profile
+metadata persist + per-user isolation, invalid-email safe errors,
+email-change SKIP on exhausted free-tier send quota, password change +
+old rejected, scope-others revocation, all settings pages 200 + markers +
+nav, hub redirect, avatar burst → 429, leak scan clean); regression
+baselines: validate-integration **67/67**, validate-delivery **45/45**,
+validate-onboarding **46/46**, validate-security **34/34**, validate-usage
+**32/32**, validate-tokens **14/14** (trailing node-on-Windows UV_HANDLE
+assert is benign, pre-existing); npm audit 0; secret-value scan 0.
+Findings recorded: Node's HTTP parser rejects a chunked DELETE (no
+`Content-Length`) at the socket layer with a generic 400 — clients must
+send `Content-Length` (harness fixed); Supabase public-URL GETs can serve
+a Cloudflare HIT after delete (deletion truth = storage metadata, harness
+assert tolerates a stale CDN copy). Tree.md/README.md/docs/security.md
+updated. Task 025 stays BLOCKED on live Meta externals.
+
+Verification (Task 025): 2026-09-25 Task 025 LOCAL validation PASSED / LIVE Meta
 validation BLOCKED. Local: new `apps/api/scripts/validate-integration.ts`
 **67/67 PASS** — single-source redirect URI (admin view == test view ==
 `http://localhost:4000/social-accounts/instagram/callback`, no trailing
@@ -351,6 +394,7 @@ blocking anon); see the Task 012 record below.
 | 023 | End-to-End Instagram DM Delivery | COMPLETE |
 | 024 | Production Onboarding + First Automation Experience | COMPLETE |
 | 025 | Live Meta Integration Verification & Production Delivery Validation | BLOCKED (local PASS — live deps missing) |
+| 026 | Settings & Profile Redesign | COMPLETE |
 
 Note on 004–010: Task 002 delivered working placeholder versions of every route
 (designed, data-driven, not empty). Tasks 004–010 should treat their pages as
@@ -360,6 +404,51 @@ than rebuilding from scratch.
 ---
 
 # Current Task
+
+## Task 026 - Settings & Profile Redesign
+
+Status: **COMPLETE** (2026-09-25). Local validation: **PASS** (see
+Verification in header). Task 025 remains BLOCKED independently.
+
+### Objective (from spec)
+
+Grouped Settings navigation; a real Profile page (avatar, email, phone,
+country, time zone); Security page (password change, active sessions,
+2FA placeholder, account information, danger zone with delete placeholder);
+Workspace page (name, ID, role, rename); Notifications placeholder; avatar
+storage API + workspace rename API; a dedicated harness; docs updates.
+
+### Implementation changes
+
+- **DB** — `supabase/migrations/20260925120000_account_profile_settings.sql`
+  (avatars public bucket; storage.objects insert/update/delete policies
+  scoped to the caller's `{uid}/` folder; `is_workspace_admin()`; workspace
+  rename UPDATE policy for owner/admin) and
+  `20260925130000_avatar_read_policy.sql` (authenticated SELECT — required
+  because storage uploads `INSERT .. RETURNING *`). Both APPLIED.
+- **API** — new `apps/api/src/account.ts` (`registerAccountRoutes`):
+  `POST /account/avatar` (base64 JSON, magic-byte sniff, 2MB cap,
+  caller-JWT storage PUT), `DELETE /account/avatar` (shape + owner-prefix
+  validation, idempotent), `GET /workspace`, `PATCH /workspace` (role gate +
+  RLS defense in depth). Registered in `app.ts` with a 10/min/IP avatar
+  rate limit. `supabase.ts` exports `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`.
+- **Web** — `settings/layout.tsx` + `settings-nav.tsx` (grouped nav,
+  server-side admin gate), hub redirect, `account/` (avatar-section,
+  profile-form, email-section), `security/` (password-form with strength
+  meter, sessions-card, danger-zone, copy-button), `workspace/`
+  (workspace-form), `notifications/`; `lib/profile/countries.ts` (static
+  ISO list), `lib/profile/timezones.ts`, `lib/api/avatar.ts`,
+  `lib/api/workspace.ts`; `account-form.tsx` deleted. Profile fields live in
+  Auth `user_metadata` (no profiles table); timezones fetched via
+  `Intl.supportedValuesOf` client-side (hydration-safe); native selects.
+- **Harness** — new `apps/api/scripts/validate-account.mjs` (51 checks).
+
+### Validation
+
+See "Verification (Task 026)" in the header — 51/51 new harness, full
+regression battery green, typecheck/lint/build 0, npm audit 0, docs updated.
+
+---
 
 ## Task 025 - Live Meta Integration Verification & Production Delivery Validation
 
